@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["src/app/custom-input/custom-input.component.scss"],
+  "sourcesContent": [".custom-input-container {\n    display: flex;\n    flex-direction: column;\n    margin-bottom: 16px;\n    max-width: 400px;\n    border: none;\n    background-color: #fafafa;\n    border-radius: 2px;\n    padding: 10px;\n  }\n  \n  .custom-input-container label {\n    margin-bottom: 4px;\n    font-size: 14px;\n    color: #7a7a7a;\n  }\n  \n.custom-input-container input, .custom-input-container textarea {\n    padding: 8px 12px;\n    font-size: 14px;\n    border: none;\n    border-radius: 4px;\n}\n\n\n.disable {\n    opacity: 0.5;\n    pointer-events: none;\n}\n.custom-select {\n    flex-direction: row;\n    justify-content: space-between;\n}"],
+  "mappings": ";AAAA,CAAA;AACI,WAAA;AACA,kBAAA;AACA,iBAAA;AACA,aAAA;AACA,UAAA;AACA,oBAAA;AACA,iBAAA;AACA,WAAA;;AAGF,CAXF,uBAWE;AACE,iBAAA;AACA,aAAA;AACA,SAAA;;AAGJ,CAjBA,uBAiBA;AAAA,CAjBA,uBAiBA;AACI,WAAA,IAAA;AACA,aAAA;AACA,UAAA;AACA,iBAAA;;AAIJ,CAAA;AACI,WAAA;AACA,kBAAA;;AAEJ,CAAA;AACI,kBAAA;AACA,mBAAA;;",
+  "names": []
+}

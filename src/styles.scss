@@ -1,0 +1,1491 @@
+@use 'styles/variables' as *;
+@import 'handsontable/dist/handsontable.full.min.css';
+
+/* You can add global styles to this file, and also import other style files */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+
+
+/* Hide scrollbars for all elements - works on Windows and Mac */
+* {
+    /* Firefox */
+    scrollbar-width: none;
+    /* IE and Edge */
+    -ms-overflow-style: none;
+}
+
+/* WebKit browsers (Chrome, Safari, Edge) */
+*::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+    background: transparent;
+}
+
+html, body {
+    @apply font-sans;
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    font-family: 'Inter', 'Open Sans', sans-serif !important;
+    /* Ensure scrollbars are hidden on html and body */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+    background: transparent;
+}
+h1{
+    font-size:20px;
+    font-weight: 700;
+   
+}
+h1, h2, h3, h4, h5, h6 {
+    margin-bottom: 20px !important; /* Adjust as needed */
+  }
+body { 
+      font-family: 'Inter', 'Open Sans', sans-serif; 
+}
+
+
+
+html{
+    --mat-sys-background: #fff;
+    --mat-sys-error: #ba1a1a;
+    --mat-sys-error-container: #ffdad6;
+    --mat-sys-inverse-on-surface: #f2f0f4;
+    --mat-sys-inverse-primary: #abc7ff;
+    --mat-sys-inverse-surface: #2f3033;
+    --mat-sys-on-background: #1a1b1f;
+    --mat-sys-on-error: #ffffff;
+    --mat-sys-on-error-container: #410002;
+    --mat-sys-on-primary: #ffffff;
+    --mat-sys-on-primary-container: #001b3f;
+    --mat-sys-on-primary-fixed: #001b3f;
+    --mat-sys-on-primary-fixed-variant: #00458f;
+    --mat-sys-on-secondary: #ffffff;
+    --mat-sys-on-secondary-container: #131c2b;
+    --mat-sys-on-secondary-fixed: #131c2b;
+    --mat-sys-on-secondary-fixed-variant: #3e4759;
+    --mat-sys-on-surface: #1a1b1f;--mat-sys-on-surface-variant: #44474e;
+    --mat-sys-on-tertiary: #ffffff;
+    --mat-sys-on-tertiary-container: #00006e;
+    --mat-sys-on-tertiary-fixed: #00006e;
+    --mat-sys-on-tertiary-fixed-variant: #0000ef;
+    --mat-sys-outline: #74777f;
+    --mat-sys-outline-variant: #c4c6d0;
+    --mat-sys-primary: #004B50;
+    --mat-sys-primary-container: #d7e3ff;
+    --mat-sys-primary-fixed: #d7e3ff;
+    --mat-sys-primary-fixed-dim: #abc7ff;
+    --mat-sys-scrim: #000000;
+    --mat-sys-secondary: #565e71;
+    --mat-sys-secondary-container: #dae2f9;
+    --mat-sys-secondary-fixed: #dae2f9;
+    --mat-sys-secondary-fixed-dim: #bec6dc;
+    --mat-sys-shadow: #000000;
+    --mat-sys-surface: #fff;
+    --mat-sys-surface-bright: #faf9fd;
+    --mat-sys-surface-container: #efedf0;
+    --mat-sys-surface-container-high: #e9e7eb;
+}
+quill-editor {
+    width: 100% !important;
+    display: block !important;
+}
+app-mermaid svg {
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100%;
+}
+
+.status-badge {
+    height: 22px;
+    text-align: center;
+    padding: 4px 10px !important;
+    border-radius: 8px !important;
+    font-weight: 700;
+    font-size: 10px;
+    justify-content: center;
+  }
+  .beta-badge {
+    font-size: 11px;
+    line-height: 14px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #fff3e6;
+    color: #c2540a;
+    white-space: nowrap;
+  }
+  .Text{
+    background-color: #e5ede4;
+    color: #092e07;
+  }
+  .Doc{
+    background-color: #f5f5f5;
+    color: #414651;
+  }
+  .URL{
+    background-color: #f9f4f0;
+    color: #8e7560;
+  }
+  
+  .badge-draft {
+    background-color: #f5f5f5;
+    color: #7a7a7a;
+  }
+  
+  .badge-inprogress {
+    background-color: #fef7e2;
+    color: #a98226;
+  }
+  
+  .badge-live {
+    background-color: #e2fee4;
+    color: #2e8a45;
+  }
+  
+  .badge-unknown {
+    background-color: #f5f5f5;
+    color: #7a7a7a;
+  }
+  
+  .failed {
+    background-color: #f8d7da;
+    color: #721c24;
+  }
+  
+  .badge-pending {
+    background-color: #cce5ff;
+    color: #004085;
+  }
+  
+  .badge-disabled {
+    background-color: #f5f5f5;
+    color: #7a7a7a;
+  }
+  
+  .badge-deleted {
+    background-color: #f8d7da;
+    color: #721c24;
+  }
+  
+  .analyzing {
+    background-color: #fff3cd;
+    color: #856404;
+  }
+  
+
+
+mat-sidenav.mat-drawer.mat-sidenav.sidenav {
+    border: .1px solid #d8d8d8;
+    border-radius: 0px;
+    padding: 0;
+}
+.pink{
+    background-color: #fff3f3;
+    color: #DE7171;
+
+}
+.green{
+    background-color: #f5fee2;
+    color: #b4dc85;
+
+}
+// .button {
+//     border: none;
+//     border-radius: 5px;
+//     background: #212B36;
+//     font-size: 14px;
+//     color: #fff;
+//     padding: 5px 16px;
+
+//     &.secondary {
+//         background: #919EAB33;
+//         color: #919EABCC;
+//     }
+
+//     &.add {
+//         display: flex;
+//         flex-direction: row;
+//         align-items: center;
+//         img {
+//             margin-right: 10px;
+//         }
+//     }
+// }
+// button:disabled {
+//     background: #7e808133 !important;
+//     color: #919EABCC !important;
+//     pointer-events: none;
+
+//   }
+
+.aligned {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    &.rows {
+        flex-direction: row;
+    }
+}
+.chat-window{
+    .mat-mdc-tab-body-wrapper{
+        margin-top: unset;
+        padding-top: unset;
+        height: 82vh;
+        max-height: 79vh;
+        overflow: scroll;
+    }
+    .mat-mdc-tab-header{
+        height: 64px;
+        padding:15px 0px;
+    }
+    .mat-mdc-tab-body-content{
+        padding:10px;
+    }
+}
+
+
+.btn-check:checked + .btn, :not(.btn-check) + .btn:active, .btn:first-child:active, .btn.active, .btn.show{
+    background-color: white;
+    color: black;
+    border-color:unset;
+}
+.dropdown-item.active, .dropdown-item:active{
+    background-color: white;
+    color: black;
+    border-color:unset;
+}
+.mat-mdc-tab-label-container {
+    position: relative;
+    z-index: 2;
+    border-bottom: unset;
+    .mat-mdc-tab-list {
+        background: transparent;
+    }
+}
+.mat-mdc-tab-header{
+    height: 49px;
+}
+
+
+
+.mdc-tab{
+    padding:0px !important;
+}
+
+input:focus,textarea:focus {
+    outline: none;
+}
+
+.ql-editor.ql-blank::before{
+    font-size: 16px !important;
+    color: #9da3af !important;
+    font-style: normal !important;  /* Prevents italic text */
+}
+.ql-toolbar.ql-snow{
+    border:unset !important;
+    border-bottom: 1px solid #ccc !important;
+}
+.ql-container.ql-snow{
+    border:unset !important
+}
+
+.ql-toolbar{
+    button{
+        min-width: unset !important;
+        min-height: unset !important;
+    }
+}
+
+// button {
+//     padding: 15px 20px 15px 20px;
+//     opacity: 0px;
+//     font-family: 'Inter', 'Open Sans', sans-serif !important;
+//     &.button-primary {
+//         color: #fff;
+//         border-radius: 8px;
+//         background: linear-gradient(90deg, #212B36 0%, #212B36 100%);
+//         border-radius: 8px;
+//         padding:5px 15px;
+//         font-weight: 600;
+//         transition: box-shadow 0.3s, background 0.3s, background-color 0.3s, background-image 0.3s, color 0.3s;
+//         &:hover {
+//             background: linear-gradient(90deg, #212B36 0%, #111417 100%);
+//             box-shadow: 0px 2px 2px 0px #212B36aa;
+//         }
+//     }
+//     &.button-secondary {
+//         background: unset;
+//         color: #212B36;
+//         border-radius: 8px;
+//         padding:5px 15px;
+//         border:1px solid #212B36;
+//         border-radius: 8px;
+//         font-size: 14px;
+//         &:hover {
+//             border: 1px solid #212B36; // or a different color/thickness
+//         }
+       
+//     }
+// }
+
+/* Global override - add this to styles.scss or any global stylesheet */
+.mat-mdc-option .mdc-list-item__primary-text {
+  font-family: 'Inter', sans-serif !important;
+  font-size: 14px !important;
+  color: #333 !important;
+}
+
+/* 2. Remove hover/focus extra border glow */
+.mat-mdc-form-field.mat-focused .mdc-notched-outline,
+.mat-mdc-form-field:hover .mdc-notched-outline {
+  border-color: #3f51b5 !important; /* Your primary color */
+  box-shadow: none !important;
+}
+
+/* Global styles.scss or encapsulation: ViewEncapsulation.None required */
+.mat-mdc-form-field.mat-focused .mdc-notched-outline,
+.mat-mdc-form-field.mat-focused .mdc-notched-outline__leading,
+.mat-mdc-form-field.mat-focused .mdc-notched-outline__trailing,
+.mat-mdc-form-field.mat-focused .mdc-notched-outline__notch {
+  border-color: transparent !important;
+  border-width: 0px !important;
+  box-shadow: none !important;
+}
+
+
+
+
+
+
+
+
+
+
+
+// button {
+//     padding: 15px 20px 15px 20px;
+//     opacity: 0px;
+//     font-family: 'Inter', 'Open Sans', sans-serif !important;
+//     &.button-primary {
+//         color: #fff;
+//         border-radius: 8px;
+//         background: linear-gradient(90deg, #212B36 0%, #212B36 100%);
+//         border-radius: 8px;
+//         padding:5px 15px;
+//         font-weight: 600;
+//         transition: box-shadow 0.3s, background 0.3s, background-color 0.3s, background-image 0.3s, color 0.3s;
+//         &:hover {
+//             background: linear-gradient(90deg, #212B36 0%, #111417 100%);
+//             box-shadow: 0px 2px 2px 0px #212B36aa;
+//         }
+//     }
+//     &.button-secondary {
+//         background: unset;
+//         color: #212B36;
+//         border-radius: 8px;
+//         padding:5px 15px;
+//         border:1px solid #212B36;
+//         border-radius: 8px;
+//         font-size: 14px;
+//         &:hover {
+//             border: 1px solid #212B36; // or a different color/thickness
+//         }
+       
+//     }
+// }
+
+.info-text {
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 20px;
+    text-align: center;
+    width: 72%;
+    word-wrap: break-word;
+    color: #666666;
+
+}
+.card-resources{
+    border: 1px solid #d5d7da !important;
+    border-radius: 8px !important;
+    .mat-mdc-tab-header{
+        height: 50px;
+        border-bottom: 1px solid #d5d7da;
+        padding: 0px;
+    }
+}
+.config {
+    // .mat-mdc-tab-body-wrapper {
+    //     height: calc(100% - 128px);
+    // }
+}
+
+.dialog {
+    z-index: 1000 !important;
+}
+.mat-mdc-menu-item{
+    border-bottom: 1px solid #ccc;
+}
+.mat-mdc-menu-item-text{
+    display: flex;
+    justify-content: flex-start;
+    font-family: 'Inter', 'Open Sans', sans-serif !important;
+    align-items: center;
+    img{
+        margin-right: 5px;
+    }
+}
+.mat-mdc-menu-content, .mat-mdc-menu-content .mat-mdc-menu-item .mat-mdc-menu-item-text{
+    background-color: white;
+}
+.mat-mdc-tab.mdc-tab{
+    padding: 0px 20px 0px 20px !important;
+    min-width: auto !important;
+    justify-content: left !important;
+    &:first-child{
+      // margin-left: 5px !important;
+        // padding-left:5px !important;
+    }
+    
+}
+.mat-mdc-progress-spinner .mdc-circular-progress__determinate-circle, .mat-mdc-progress-spinner .mdc-circular-progress__indeterminate-circle-graphic{
+    stroke: #ffffff !important;
+}
+
+/* Custom Toastr Styles */
+.toast-container {
+    z-index: 2000 !important;
+  .ngx-toastr {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+    min-width: 300px;
+    max-width: 500px;
+    font-family: inherit;
+    
+    &:hover {
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    }
+
+    .toast-close-button {
+        color: black !important;      /* Change 'black' to any desired color */
+        opacity: 1 !important;        /* Ensures the color is fully visible */
+      }
+
+    .toast-title {
+      font-weight: 600;
+      font-size: 1px;
+      margin-bottom: 4px;
+    }
+
+    .toast-message {
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    &.toast-info {
+        background-color: #e2fee4;
+        color: #2e8a45;
+       background-image: none !important;
+
+    }
+
+    &.toast-success {
+        background-color: #e2fee4;
+        color: #2e8a45;
+      background-image: none !important;
+
+    }
+
+    &.toast-error {
+      background-color: #B71D18;
+      color: white;
+      background-image: none !important;
+
+    }
+
+    &.toast-warning {
+      background-color: #FFAB00;
+      color: #212B36;
+      background-image: none !important;
+
+    }
+
+    // Toast with icon styles
+    &.toast-with-icon {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      
+      &::before {
+        content: '';
+        width: 20px;
+        height: 20px;
+        flex-shrink: 0;
+        margin-top: 2px;
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center;
+      }
+      
+      &.toast-success::before {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%232e8a45' viewBox='0 0 24 24'%3E%3Cpath d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'/%3E%3C/svg%3E");
+      }
+      
+      &.toast-error::before {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='white' viewBox='0 0 24 24'%3E%3Cpath d='M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z'/%3E%3C/svg%3E");
+      }
+      
+      &.toast-warning::before {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%23212B36' viewBox='0 0 24 24'%3E%3Cpath d='M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z'/%3E%3C/svg%3E");
+      }
+      
+      &.toast-info::before {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%232e8a45' viewBox='0 0 24 24'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z'/%3E%3C/svg%3E");
+      }
+      
+      .toast-title-with-icon {
+        margin: 0;
+        font-weight: 600;
+        font-size: 14px;
+      }
+      
+      .toast-message-with-icon {
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.4;
+        opacity: 0.9;
+      }
+    }
+
+    .toast-info,
+    .toast-success,
+    .toast-error,
+    .toast-warning {
+        background-image: none !important;
+    }
+  }
+}
+
+.ql-snow .ql-editor {
+      font-family: 'Inter', 'Open Sans', sans-serif; 
+    font-size: 15px;
+    line-height: 1.6;
+    padding: 20px;
+    background-color: #fff;
+    color: #333;
+  }
+  
+  /* Headings */
+  .ql-snow .ql-editor h1 {
+    font-size: 24px;
+    font-weight: bold;
+    border-bottom: 2px solid #ddd;
+    padding-bottom: 6px;
+    margin-top: 20px;
+    margin-bottom: 12px;
+  }
+  
+  .ql-snow .ql-editor h2 {
+    font-size: 20px;
+    margin: 10px 0px;
+     font-weight: 600;
+  }
+  
+  .ql-snow .ql-editor h3 {
+    font-size: 16px;
+    color: #444;
+    margin: 10px 0px;
+    font-weight: 600;
+  }
+  
+  /* Paragraphs */
+  .ql-snow .ql-editor p {
+    margin: 10px 0;
+  }
+  
+  /* Lists */
+  .ql-snow .ql-editor ul {
+    padding-left: 20px;
+    margin: 10px 0;
+  }
+  
+  .ql-snow .ql-editor li {
+    margin-bottom: 6px;
+  }
+  
+  /* Strong / Bold */
+  .ql-snow .ql-editor strong {
+    font-weight: bold;
+    color: #000;
+  }
+  
+  /* Inline code blocks */
+  .ql-snow .ql-editor code {
+    background-color: #f6f8fa;
+    padding: 2px 6px;
+    border-radius: 4px;
+      font-family: 'Inter', 'Open Sans', sans-serif; 
+    font-size: 14px;
+  }
+  
+  /* Optional: Quill block styling */
+  .ql-snow .ql-editor pre {
+    background: #f3f3f3;
+    padding: 10px;
+    border-radius: 4px;
+      font-family: 'Inter', 'Open Sans', sans-serif; 
+    overflow-x: auto;
+    font-size: 14px;
+  }
+  
+  /* Step spacing */
+  .ql-snow .ql-editor h3 + ul,
+  .ql-snow .ql-editor h3 + p {
+    margin-top: 4px;
+    margin-bottom: 12px;
+  }
+
+
+  // datepicker
+  /* Custom styling for the entire popup panel */
+.custom-datepicker-panel .mat-datepicker-content {
+    background-color: #ffffff !important;   // white background
+    padding: 12px !important;               // adjust padding
+    border-radius: 8px;                     // rounded corners
+    color: #000000;                         // text color
+  }
+  
+  /* Calendar body cell (dates) */
+  .custom-datepicker-panel .mat-calendar-body-cell {
+    padding: 6px !important;                // tighter date cell padding
+  }
+  
+  /* Selected date styling */
+  .custom-datepicker-panel .mat-calendar-body-selected {
+    background-color: #1976d2 !important;   // primary blue
+    color: #fff !important;
+    border-radius: 50% !important;
+  }
+  
+  /* Hovered date styling */
+  .custom-datepicker-panel .mat-calendar-body-cell:not(.mat-calendar-body-disabled):hover {
+    background-color: rgba(25, 118, 210, 0.1) !important;
+  }
+  
+  /* Header (month/year navigation) */
+  .custom-datepicker-panel .mat-calendar-header {
+    color: #333;
+    padding: 5px !important;
+  }
+  .mdc-text-field {
+    align-items: center !important;
+    background-color: white !important;
+    padding:0px 5px !important;
+  }
+  .mat-mdc-icon-button{
+    padding: 0px !important;
+    margin: 0px !important;
+    width: 30px !important;
+    .mat-mdc-icon{
+        width: 20px !important;
+        height: 20px !important;
+    }
+  }
+  .mat-datepicker-content .mat-calendar{
+    background-color: white !important;
+    border-radius: 8px !important;
+    padding: 12px !important;
+    color: #000000 !important;  
+    border: 1px solid #d5d7da !important;
+  }
+  
+  .mdc-text-field--outlined .mat-mdc-form-field-infix {
+    padding: 0 !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    display: flex;
+    align-items: center;
+  }
+  .mdc-text-field--outlined {
+    height: 36px !important;
+    min-height: 36px !important;
+    display: flex;
+    align-items: center; /* vertically center all children */
+  }
+  input.mat-datepicker-input {
+    width: 100%; /* takes full width of container */
+    max-width: 200px; /* restricts to desired width */
+  }
+  .mdc-text-field--outlined .mat-mdc-form-field-infix {
+    padding: 0 !important;
+    height: 100%;
+    display: flex;
+    align-items: center; /* vertical center input inside */
+  }
+  
+  .mdc-text-field--outlined .mat-mdc-input-element {
+    text-align: center;
+    padding: 0 4px !important;
+    line-height: normal !important;
+    font-size: 14px !important;
+    align-self: center; /* center inside flex */
+    box-sizing: border-box;
+    border: none;
+    background: transparent;
+  }
+  .dropdown-menu {
+    z-index: 1055 !important; /* Bootstrap modals use 1055+ */
+    position: absolute !important;
+  }
+  .mdc-text-field{
+    border-radius: 6px !important;
+    
+  }
+
+.loader {
+  width: 100%;
+  height: 100%;
+  background-color: #f3f4f6;
+  border-radius: 8px;
+  background-size: 200% 100%;
+  background-image: linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 50%, #f3f4f6 100%);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.mat-typography {
+    font-family: 'Inter', sans-serif;
+}
+
+.mat-body, .mat-body-1, .mat-typography .mat-body, .mat-typography .mat-body-1, .mat-typography {
+    font-family: 'Inter', sans-serif;
+}
+
+.mat-body-2, .mat-typography .mat-body-2 {
+    font-family: 'Inter', sans-serif;
+}
+
+.mat-mdc-tab-body-wrapper {
+    font-family: 'Inter', sans-serif;
+}
+
+.mat-mdc-tab-header {
+    font-family: 'Inter', sans-serif;
+}
+
+.mat-mdc-tab-body-content {
+    font-family: 'Inter', sans-serif;
+    padding-bottom: 20px;
+}
+
+.mat-mdc-tab-label-container {
+    font-family: 'Inter', sans-serif;
+}
+
+.mat-mdc-tab-list {
+    font-family: 'Inter', sans-serif;
+}
+
+.mat-mdc-menu-item {
+    font-family: 'Inter', sans-serif;
+}
+
+.mat-mdc-menu-item-text {
+    font-family: 'Inter', sans-serif;
+}
+
+.mat-mdc-menu-content, .mat-mdc-menu-content .mat-mdc-menu-item .mat-mdc-menu-item-text {
+    font-family: 'Inter', sans-serif;
+}
+
+.mat-mdc-tab.mdc-tab {
+    font-family: 'Inter', sans-serif;
+}
+
+.mdc-text-field--outlined .mat-mdc-form-field-infix {
+    font-family: 'Inter', sans-serif;
+}
+
+.mdc-text-field--outlined .mat-mdc-input-element {
+    font-family: 'Inter', sans-serif;
+}
+
+.mat-datepicker-content .mat-calendar {
+    font-family: 'Inter', sans-serif;
+}
+
+.custom-datepicker-panel .mat-datepicker-content {
+    font-family: 'Inter', sans-serif;
+}
+
+.custom-datepicker-panel .mat-calendar-header {
+    font-family: 'Inter', sans-serif;
+}
+
+.mat-mdc-icon-button {
+    font-family: 'Inter', sans-serif;
+}
+
+.mat-mdc-icon {
+    /* Use Material Icons font so ligatures render correctly */
+    font-family: 'Material Icons', 'Material Icons Outlined', 'Material Symbols Outlined' !important;
+    font-style: normal;
+    font-weight: normal;
+    font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Prevent browser default context menu on Handsontable container */
+.hot-table-container {
+  user-select: none; /* optional, improve UX */
+}
+
+.hot-table-container .htCore {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+// button styling 
+
+button {
+  display: inline-block;
+  border-radius: 8px;
+ 
+  border: none;
+  color: #FFFFFF;
+  text-align: center;
+  font-size: 13px;
+  padding: 5px 10px;
+
+  transition: all 0.5s;
+  margin-right: 10px;
+  cursor: pointer;
+  font-weight: 400;
+        &.button-primary {
+            color: #fff;
+            border-radius: 8px;
+            min-width: 80px;
+            background-color: #000000;
+        }
+        &.button-secondary {
+            background: unset;
+            color: #212B36;
+            border-radius: 8px;
+            border: 1px solid #212B36; 
+            &:hover {
+                border: 1px solid #212B36; // or a different color/thickness
+            }
+        }
+ }
+ 
+ button span {
+  cursor: pointer;
+  display: inline-block;
+  position: relative;
+  transition: 0.5s;
+ }
+ 
+ button span:after {
+  position: absolute;
+  opacity: 0;
+  top: 0;
+  right: -15px;
+  transition: 0.5s;
+ }
+ 
+//  button:hover span {
+//   padding-right: 15px;
+//  }
+ 
+//  button:hover span:after {
+//   opacity: 1;
+//   right: 0;
+//  }
+
+
+ // mat-select styling - More aggressive overrides
+
+::ng-deep .mat-mdc-select-value {
+  color: #000000 !important;
+  font-family: 'Inter', 'Open Sans', sans-serif !important;
+  font-size: 14px !important;
+}
+
+::ng-deep .mat-mdc-select-arrow {
+  color: #000000 !important;
+}
+
+::ng-deep .mat-mdc-select-trigger {
+  font-family: 'Inter', 'Open Sans', sans-serif !important;
+  font-size: 14px !important;
+}
+
+::ng-deep .mat-mdc-select-value-text {
+  font-family: 'Inter', 'Open Sans', sans-serif !important;
+  font-size: 14px !important;
+}
+
+::ng-deep .mat-mdc-select {
+  font-family: 'Inter', 'Open Sans', sans-serif !important;
+  font-size: 14px !important;
+}
+
+::ng-deep .mat-mdc-select .mat-mdc-select-value {
+  font-family: 'Inter', 'Open Sans', sans-serif !important;
+  font-size: 14px !important;
+}
+
+::ng-deep .mat-mdc-form-field .mat-mdc-select {
+  font-family: 'Inter', 'Open Sans', sans-serif !important;
+  font-size: 14px !important;
+}
+
+// Alternative selectors - more specific
+.mat-mdc-select-value {
+  color: #000000 !important;
+  font-family: 'Inter', 'Open Sans', sans-serif !important;
+  font-size: 14px !important;
+}
+
+.mat-mdc-select-value-text {
+  font-family: 'Inter', 'Open Sans', sans-serif !important;
+  font-size: 14px !important;
+}
+
+.mat-mdc-select-trigger {
+  font-family: 'Inter', 'Open Sans', sans-serif !important;
+  font-size: 14px !important;
+}
+
+// Target the span inside select value
+.mat-mdc-select-value span {
+  font-family: 'Inter', 'Open Sans', sans-serif !important;
+  font-size: 14px !important;
+}
+
+// More specific targeting
+mat-select .mat-mdc-select-value {
+  font-family: 'Inter', 'Open Sans', sans-serif !important;
+  font-size: 14px !important;
+}
+
+mat-select .mat-mdc-select-value-text {
+  font-family: 'Inter', 'Open Sans', sans-serif !important;
+  font-size: 14px !important;
+}
+
+// Target all mat-select elements
+mat-select {
+  font-family: 'Inter', 'Open Sans', sans-serif !important;
+  font-size: 14px !important;
+}
+
+mat-select * {
+  font-family: 'Inter', 'Open Sans', sans-serif !important;
+  font-size: 14px !important;
+}
+
+// Using attribute selector
+[role="combobox"] {
+  font-family: 'Inter', 'Open Sans', sans-serif !important;
+  font-size: 14px !important;
+}
+
+// MDC specific selectors
+.mdc-select__selected-text {
+  font-family: 'Inter', 'Open Sans', sans-serif !important;
+  font-size: 14px !important;
+}
+
+// Add padding and remove focus border
+::ng-deep .mat-mdc-select-value {
+  padding: 8px 5px !important;
+}
+
+::ng-deep .mat-mdc-select-trigger {
+  padding: 8px 5px !important;
+}
+
+.mat-mdc-select-value {
+  padding: 8px 5px !important;
+}
+
+.mat-mdc-select-trigger {
+  padding: 8px 5px !important;
+}
+
+// Remove focus border and outline
+.mat-mdc-form-field.mat-focused .mdc-notched-outline,
+.mat-mdc-form-field.mat-focused .mdc-notched-outline__leading,
+.mat-mdc-form-field.mat-focused .mdc-notched-outline__trailing,
+.mat-mdc-form-field.mat-focused .mdc-notched-outline__notch {
+  border-color: transparent !important;
+  border-width: 0px !important;
+  box-shadow: none !important;
+}
+
+::ng-deep .mat-mdc-select:focus {
+  outline: none !important;
+  border: none !important;
+}
+
+::ng-deep .mat-mdc-select-trigger:focus {
+  outline: none !important;
+  border: none !important;
+}
+
+.mat-mdc-form-field.mat-focused .mdc-notched-outline,
+.mat-mdc-form-field.mat-focused .mdc-notched-outline__leading,
+.mat-mdc-form-field.mat-focused .mdc-notched-outline__trailing,
+.mat-mdc-form-field.mat-focused .mdc-notched-outline__notch {
+  border-color: transparent !important;
+  border-width: 0px !important;
+  box-shadow: none !important;
+}
+
+// Additional focus border removal - more comprehensive
+::ng-deep .mat-mdc-form-field:hover .mdc-notched-outline,
+::ng-deep .mat-mdc-form-field:hover .mdc-notched-outline__leading,
+::ng-deep .mat-mdc-form-field:hover .mdc-notched-outline__trailing,
+::ng-deep .mat-mdc-form-field:hover .mdc-notched-outline__notch {
+  border-color: transparent !important;
+  border-width: 0px !important;
+  box-shadow: none !important;
+}
+
+::ng-deep .mat-mdc-form-field .mdc-notched-outline,
+::ng-deep .mat-mdc-form-field .mdc-notched-outline__leading,
+::ng-deep .mat-mdc-form-field .mdc-notched-outline__trailing,
+::ng-deep .mat-mdc-form-field .mdc-notched-outline__notch {
+  border-color: transparent !important;
+  border-width: 0px !important;
+  box-shadow: none !important;
+}
+
+// Remove all borders from mat-select form fields
+.mat-mdc-form-field:hover .mdc-notched-outline,
+.mat-mdc-form-field:hover .mdc-notched-outline__leading,
+.mat-mdc-form-field:hover .mdc-notched-outline__trailing,
+.mat-mdc-form-field:hover .mdc-notched-outline__notch {
+  border-color: transparent !important;
+  border-width: 0px !important;
+  box-shadow: none !important;
+}
+
+.mat-mdc-form-field .mdc-notched-outline,
+.mat-mdc-form-field .mdc-notched-outline__leading,
+.mat-mdc-form-field .mdc-notched-outline__trailing,
+.mat-mdc-form-field .mdc-notched-outline__notch {
+  border-color: transparent !important;
+  border-width: 0px !important;
+  box-shadow: none !important;
+}
+
+// Target mat-select specifically
+mat-select .mat-mdc-form-field.mat-focused .mdc-notched-outline,
+mat-select .mat-mdc-form-field:hover .mdc-notched-outline,
+mat-select .mat-mdc-form-field .mdc-notched-outline {
+  border: none !important;
+  outline: none !important;
+}
+
+// Remove bottom border and underline specifically
+::ng-deep .mat-mdc-form-field .mdc-line-ripple {
+  display: none !important;
+}
+
+::ng-deep .mat-mdc-form-field .mdc-line-ripple::before,
+::ng-deep .mat-mdc-form-field .mdc-line-ripple::after {
+  display: none !important;
+}
+
+::ng-deep .mat-mdc-form-field.mat-focused .mdc-line-ripple {
+  display: none !important;
+}
+
+::ng-deep .mat-mdc-form-field .mat-mdc-form-field-focus-overlay {
+  display: none !important;
+}
+
+::ng-deep .mat-mdc-form-field .mat-mdc-form-field-ripple {
+  display: none !important;
+}
+
+.mat-mdc-form-field .mdc-line-ripple {
+  display: none !important;
+}
+
+.mat-mdc-form-field .mdc-line-ripple::before,
+.mat-mdc-form-field .mdc-line-ripple::after {
+  display: none !important;
+}
+
+.mat-mdc-form-field.mat-focused .mdc-line-ripple {
+  display: none !important;
+}
+
+.mat-mdc-form-field .mat-mdc-form-field-focus-overlay {
+  display: none !important;
+}
+
+.mat-mdc-form-field .mat-mdc-form-field-ripple {
+  display: none !important;
+}
+
+// Additional bottom border removal
+::ng-deep .mat-mdc-form-field-bottom-align::before {
+  display: none !important;
+}
+
+::ng-deep .mat-mdc-form-field-subscript-wrapper {
+  display: none !important;
+}
+
+.mat-mdc-form-field-bottom-align::before {
+  display: none !important;
+}
+
+.mat-mdc-form-field-subscript-wrapper {
+  display: none !important;
+}
+
+// Specific styling for standard appearance form fields
+::ng-deep .mat-mdc-form-field.mat-form-field-appearance-standard .mdc-text-field {
+  border-bottom: none !important;
+}
+
+::ng-deep .mat-mdc-form-field.mat-form-field-appearance-standard .mdc-text-field:hover {
+  border-bottom: none !important;
+}
+
+::ng-deep .mat-mdc-form-field.mat-form-field-appearance-standard .mdc-text-field.mdc-text-field--focused {
+  border-bottom: none !important;
+}
+
+::ng-deep .mat-mdc-form-field.mat-form-field-appearance-standard .mdc-text-field::before {
+  display: none !important;
+}
+
+::ng-deep .mat-mdc-form-field.mat-form-field-appearance-standard .mdc-text-field::after {
+  display: none !important;
+}
+
+.mat-mdc-form-field.mat-form-field-appearance-standard .mdc-text-field {
+  border-bottom: none !important;
+}
+
+.mat-mdc-form-field.mat-form-field-appearance-standard .mdc-text-field:hover {
+  border-bottom: none !important;
+}
+
+.mat-mdc-form-field.mat-form-field-appearance-standard .mdc-text-field.mdc-text-field--focused {
+  border-bottom: none !important;
+}
+
+.mat-mdc-form-field.mat-form-field-appearance-standard .mdc-text-field::before {
+  display: none !important;
+}
+
+.mat-mdc-form-field.mat-form-field-appearance-standard .mdc-text-field::after {
+  display: none !important;
+}
+
+// Set mat-select dropdown height to 44px
+::ng-deep .mat-mdc-form-field {
+  height: 44px !important;
+}
+
+::ng-deep .mat-mdc-form-field .mat-mdc-text-field-wrapper {
+  height: 44px !important;
+}
+
+::ng-deep .mat-mdc-form-field .mdc-text-field {
+  height: 44px !important;
+}
+
+::ng-deep .mat-mdc-form-field .mat-mdc-form-field-infix {
+  height: 44px !important;
+  min-height: 44px !important;
+  display: flex;
+  align-items: center;
+}
+
+::ng-deep .mat-mdc-select-trigger {
+  height: 44px !important;
+  display: flex;
+  align-items: center;
+}
+
+.mat-mdc-form-field {
+  height: 44px !important;
+}
+
+.mat-mdc-form-field .mat-mdc-text-field-wrapper {
+  height: 44px !important;
+}
+
+.mat-mdc-form-field .mdc-text-field {
+  height: 44px !important;
+}
+
+.mat-mdc-form-field .mat-mdc-form-field-infix {
+  height: 44px !important;
+  min-height: 44px !important;
+  display: flex;
+  align-items: center;
+}
+
+.mat-mdc-select-trigger {
+  height: 44px !important;
+  display: flex;
+  align-items: center;
+}
+
+// Global tooltip styling
+.mat-mdc-tooltip,
+.mat-mdc-tooltip *,
+.mdc-tooltip,
+.mdc-tooltip__surface,
+.mdc-tooltip__surface-animation {
+    font-family: 'Inter', 'Open Sans', sans-serif !important;
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    line-height: 18px !important;
+}
+
+.mat-tooltip,
+.mat-tooltip * {
+    font-family: 'Inter', 'Open Sans', sans-serif !important;
+    font-size: 12px !important;
+    font-weight: 400 !important;
+}
+
+// Target the tooltip panel directly
+.cdk-overlay-container .mat-mdc-tooltip,
+.cdk-overlay-container .mdc-tooltip,
+.cdk-overlay-container .mdc-tooltip__surface,
+.cdk-overlay-pane .mat-mdc-tooltip,
+.cdk-overlay-pane .mdc-tooltip,
+.cdk-overlay-pane .mdc-tooltip__surface {
+    font-family: 'Inter', 'Open Sans', sans-serif !important;
+    font-size: 12px !important;
+    font-weight: 400 !important;
+}
+
+// Even more specific - target all text in tooltip overlays
+.cdk-overlay-container,
+.cdk-overlay-pane {
+    .mat-mdc-tooltip,
+    .mdc-tooltip,
+    .mdc-tooltip__surface,
+    .mdc-tooltip__surface-animation {
+        font-family: 'Inter', 'Open Sans', sans-serif !important;
+        font-size: 12px !important;
+        font-weight: 400 !important;
+        
+        * {
+            font-family: 'Inter', 'Open Sans', sans-serif !important;
+        }
+    }
+}
+
+// Body-level fallback for tooltips
+body .mat-mdc-tooltip,
+body .mdc-tooltip,
+body .mdc-tooltip__surface,
+body [role="tooltip"] {
+    font-family: 'Inter', 'Open Sans', sans-serif !important;
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    
+    * {
+        font-family: 'Inter', 'Open Sans', sans-serif !important;
+    }
+}
+
+.custom-toggle {
+  position: absolute;
+  display: inline-block;
+  width: 32px;
+  height: 16px;
+  bottom: 10px;
+  right: 10px;
+}
+
+.custom-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.custom-toggle .slider {
+  position: absolute;
+  cursor: pointer;
+  background-color: #8e8e8e;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  transition: 0.4s;
+  border-radius: 26px;
+}
+
+.custom-toggle .slider:before {
+  content: "";
+  position: absolute;
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 0px;
+  background-color: white;
+  transition: 0.4s;
+  border:1px solid #000000;
+  border-radius: 50%;
+}
+
+
+.custom-toggle input:checked + .slider {
+  background-color: #000000;
+}
+
+.custom-toggle input:checked + .slider:before {
+  transform: translateX(16px);
+}
+::ng-deep input[type="time"] {
+  border: 1px solid #ccc !important;
+  border-radius: 4px !important;
+  padding: 6px 8px !important;
+  background-color: white !important;
+  accent-color: #9fa9b2 !important;
+}
+
+::ng-deep input[type="time"]:focus {
+  outline: none !important;
+  border-color: #1976d2 !important;
+  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2) !important;
+}
+ngx-material-timepicker {
+  z-index: 9999 !important;
+}
+
+.timepicker-overlay {
+  z-index: 9999 !important;
+}
+
+.ngx-material-timepicker-container {
+  z-index: 9999 !important;
+}
+.timepicker-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.timepicker-wrapper input {
+  flex: 1;
+}
+
+.icon-button {
+  margin-left: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 20px;
+}
+.ngx-material-timepicker-container {
+  transition: all 0.4s ease;
+  transform: translateY(-10px);
+  opacity: 0;
+}
+
+.ngx-material-timepicker-container.opened {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.timepicker__header {
+  background-color: #000000 !important; /* Custom background */
+  color: #fff !important;              /* Custom text color */
+}
+/* Background of the entire popup */
+.ngx-material-timepicker-container {
+  background-color: #f5f5f5 !important;
+  color: #333 !important;
+}
+.clock-face__number > span.active {
+  background-color: #000000 !important;  /* Active circle background */
+  color: #fff !important;                /* Text color */
+  border-radius: 50%;                    /* Make sure it's circular */
+}
+.timepicker-button {
+  background-color: transparent !important;
+  color: #000000 !important; /* Your custom color */
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.timepicker-button:hover {
+  background-color: rgba(63, 81, 181, 0.1) !important;
+}
+
+/* Dial/clock face colors */
+.timepicker__dial {
+  background-color: #e0e0e0 !important;
+}
+
+.timepicker__dial__item--active {
+  background-color: #000000 !important;
+  color: white !important;
+}
+.timepicker__dial__item {
+  background-color: #000000 !important;
+  color: white !important;
+}
+.clock-face__clock-hand::after {
+  background-color: #000000 !important;
+}
+.clock-face__clock-hand {
+  background-color: #000000 !important;
+}
+.clock-face__clock-hand::before {
+  background-color: #000000 !important;
+}
+.clock-face__clock-hand::after {
+  background-color: #000000 !important;
+}
+.clock-face__clock-hand {
+  background-color: #000000 !important;
+}
+.time-input {
+  width: 100% !important;
+  height: 44px !important;
+  border: 1px solid #ccc !important;
+  border-radius: 4px !important;
+  padding: 0px 10px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #000000 !important;
+}

@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["src/app/ui/editable-table/editable-table-example.component.ts"],
+  "sourcesContent": ["\n    .table-container {\n      padding: 20px;\n      height: 100vh;\n    }\n    \n    .header-section {\n      display: flex;\n      justify-content: space-between;\n      align-items: center;\n      margin-bottom: 20px;\n    }\n    \n    h2 {\n      margin: 0;\n      color: #333;\n    }\n\n    .add-row-btn {\n      display: flex;\n      align-items: center;\n      gap: 8px;\n    }\n  "],
+  "mappings": ";AACI,CAAA;AACE,WAAA;AACA,UAAA;;AAGF,CAAA;AACE,WAAA;AACA,mBAAA;AACA,eAAA;AACA,iBAAA;;AAGF;AACE,UAAA;AACA,SAAA;;AAGF,CAAA;AACE,WAAA;AACA,eAAA;AACA,OAAA;;",
+  "names": []
+}

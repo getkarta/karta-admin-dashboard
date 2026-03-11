@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["src/app/ui/common-input/common-input.component.scss"],
+  "sourcesContent": ["\n@use '../../../styles/variables' as *;\n\n.common-input {\n  display: flex;\n  flex-direction: column;\n  margin-bottom: 16px;\n  width: 100%;\n  .hint {\n    font-size: 12px;\n    color: #666;\n    margin-top: 4px;\n  }\n\n  label {\n    margin-bottom: 8px;\n    font-size: 14px;\n    font-weight: 500;\n    color: #333;\n  }\n\n  .form-control {\n    padding: 8px 12px;\n    border: 1px solid #ddd;\n    border-radius: 4px;\n    font-size: 14px;\n    width: 100%;\n    box-sizing: border-box;\n\n    &:focus {\n      outline: none;\n      box-shadow: unset !important;\n      border: 1px solid $color-medium-gray !important;\n    }\n\n    &:disabled {\n      background-color: #f5f5f5;\n      cursor: not-allowed;\n    }\n  }\n\n  .error-message {\n    color: #dc3545;\n    font-size: 12px;\n    margin-top: 4px;\n  }\n} "],
+  "mappings": ";AAGA,CAAA;AACE,WAAA;AACA,kBAAA;AACA,iBAAA;AACA,SAAA;;AACA,CALF,aAKE,CAAA;AACE,aAAA;AACA,SAAA;AACA,cAAA;;AAGF,CAXF,aAWE;AACE,iBAAA;AACA,aAAA;AACA,eAAA;AACA,SAAA;;AAGF,CAlBF,aAkBE,CAAA;AACE,WAAA,IAAA;AACA,UAAA,IAAA,MAAA;AACA,iBAAA;AACA,aAAA;AACA,SAAA;AACA,cAAA;;AAEA,CA1BJ,aA0BI,CARF,YAQE;AACE,WAAA;AACA,cAAA;AACA,UAAA,IAAA,MAAA;;AAGF,CAhCJ,aAgCI,CAdF,YAcE;AACE,oBAAA;AACA,UAAA;;AAIJ,CAtCF,aAsCE,CAAA;AACE,SAAA;AACA,aAAA;AACA,cAAA;;",
+  "names": []
+}

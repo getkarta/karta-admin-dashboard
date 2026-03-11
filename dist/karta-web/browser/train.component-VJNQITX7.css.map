@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["angular:styles/component:css;02d156bab9141f3a78864b2a3f1d8cefdf1836f5afeaa2be4137df045ca1795b;/Users/kush/Desktop/work/karta-web/src/app/train/train.component.html"],
+  "sourcesContent": ["\n.sops-category-list-new div.disabled {\n    opacity: 0.5;\n    cursor: not-allowed;\n    pointer-events: none;\n}\n\n.sops-category-list-new div:not(.disabled) {\n    cursor: pointer;\n}\n\n.sops-category-list-new div:not(.disabled):hover {\n    background-color: #f5f5f5;\n}\n"],
+  "mappings": ";AACA,CAAC,uBAAuB,GAAG,CAAC;AACxB,WAAS;AACT,UAAQ;AACR,kBAAgB;AACpB;AAEA,CANC,uBAMuB,GAAG,KAAK,CANJ;AAOxB,UAAQ;AACZ;AAEA,CAVC,uBAUuB,GAAG,KAAK,CAVJ,SAUc;AACtC,oBAAkB;AACtB;",
+  "names": []
+}

@@ -1,0 +1,83 @@
+<div class="login-layout">
+  <div class="login-hero">
+    <div class="hero-content">
+      <div class="hero-content-left">
+        <img src="assets/images/logo-white.png" alt="Karta logo" class="hero-logo" />
+        <h1>Agentic Platform for sales & support function
+        </h1>
+        <div class="hero-subtext-wrapper">
+          <div
+            class="hero-subtext-track"
+            [style.transform]="'translateX(-' + activeHeroIndex * 100 + '%)'"
+          >
+            <div
+              class="hero-subtext"
+              *ngFor="let section of heroSections; let i = index"
+              [class.active]="i === activeHeroIndex"
+            >
+              <h2>
+                {{ section.title }}
+              </h2>
+              <ul>
+                <li *ngFor="let item of section.items">
+                  {{ item }}
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+      <div class="disclaimer">
+        <p>
+          By continuing you agree to our 
+<a href="https://getkarta.ai/privacy-policy" style="color: rgb(40, 40, 116);">privacy policy</a>
+ and 
+<a href="https://getkarta.ai/terms-and-conditions" style="color: rgb(40, 40, 116);">terms of use</a>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="login-panel">
+    <div class="login-card" (keyup.enter)="onSignIn()">
+      <p class="welcome-label">Welcome</p>
+      <h1>Sign in to Karta</h1>
+      <p class="card-subtitle">
+        Access the control room for your AI-powered contact center.
+      </p>
+
+      <div class="form-fields">
+        <label>
+          <span>Email</span>
+          <input type="text" #eml [(ngModel)]="email" placeholder="you@getkarta.ai" />
+        </label>
+
+        <label>
+          <span>Password</span>
+          <input type="password" #pwd [(ngModel)]="password" placeholder="••••••••" />
+        </label>
+      </div>
+      <button class="button button-primary login-button" type="submit" (click)="onSignIn()">
+        Login
+      </button>
+      <div *ngIf="errorMessage" class="error-message">{{ errorMessage }}</div>
+      <p class="help-text">
+        Need access? Email
+        <a href="mailto:support@karta.com">support&#64;karta.com</a>
+      </p>
+    </div>
+    <div class="clients">
+      <h2>Trusted by leading brands</h2>
+      <div class="logos">
+        <img src="assets/images/clients/1.png" alt="clients" />
+        <img src="assets/images/clients/2.png" alt="clients" />
+        <img src="assets/images/clients/3.png" alt="clients" />
+        <img src="assets/images/clients/4.png" alt="clients" />
+        <img src="assets/images/clients/5.png" alt="clients" />
+      </div>
+    
+
+    </div>
+  </div>
+</div>

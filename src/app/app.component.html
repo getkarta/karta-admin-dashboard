@@ -1,0 +1,172 @@
+<div class="route-loader" [class.route-loader--active]="isRouteLoading">
+  <div class="route-loader__bar"></div>
+</div>
+<div class="container">
+  <div class="container-content" *ngIf="authResolved" [class.container-content--unauth]="!isLoggedIn">
+    <div
+      class="nav"
+      *ngIf="isLoggedIn && !hideNavigation"
+      [class.collapsed]="isSidebarCollapsed"
+      (click)="handleCollapsedNavClick($event)">
+      <div class="nav__header">
+        <div class="logo" role="button" tabindex="0" (click)="redirectToPath('home')" (keydown.enter)="redirectToPath('home')">
+          <img [src]="isSidebarCollapsed ? 'assets/images/logo.svg' : 'assets/images/logo1.png'" alt="Karta logo">
+          <button
+            type="button"
+            class="collapse-button"
+            [class.collapse-button--collapsed]="isSidebarCollapsed"
+            (click)="toggleSidebar(); $event.stopPropagation()">
+            <mat-icon>{{ isSidebarCollapsed ? 'chevron_right' : 'chevron_left' }}</mat-icon>
+          </button>
+        </div>
+      </div>
+
+      <!-- <div class="active-agent-summary"
+           *ngIf="hasActiveAgent"
+           [class.active-agent-summary--collapsed]="isSidebarCollapsed">
+        <ng-container *ngIf="!isSidebarCollapsed; else collapsedSummary">
+          <span
+            class="active-agent-summary__name"
+            [matTooltip]="getActiveAgentName()"
+            [matTooltipDisabled]="!isAgentNameTruncated"
+            matTooltipShowDelay="200"
+            #agentNameRef>
+            Agent Name - {{ getActiveAgentName() }}
+          </span>
+          <span class="active-agent-summary__type">Agent Type - {{ getActiveAgentTypeLabel() }}</span>
+        </ng-container>
+        <ng-template #collapsedSummary>
+          <span class="active-agent-summary__initial" matTooltip="Agent Name - {{ getActiveAgentName() }}&#10; | &#10; Agent Type - {{ getActiveAgentTypeLabel() }}">
+            <img src="assets/images/info-tag.png" width="20" height="20" alt="agent icon">
+          </span>
+        </ng-template>
+      </div> -->
+
+      <div class="nav__sections">
+        <ng-container *ngFor="let group of getPrimarySidebarNavs(); trackBy: trackSidebarNav">
+          <ng-container *ngIf="!isNavItemDisabled(group.parent.item)">
+            <!-- <p class="section-label" *ngIf="group.sectionLabel" [style.visibility]="isSidebarCollapsed ? 'hidden' : 'visible'">{{ group.sectionLabel }}</p> -->
+            <button
+              type="button"
+              class="nav-item"
+              [class.active]="isSidebarItemActive(group.parent, group.children)"
+              [class.has-children]="group.children?.length"
+              [matTooltip]="getNavLabel(group.parent)"
+              matTooltipPosition="right"
+              [matTooltipDisabled]="!isSidebarCollapsed"
+              (click)="routeNavs(group.parent, group.children)">
+              <img class="nav-icon"
+                   [src]="getNavIconPath(group.parent.item, isSidebarItemActive(group.parent, group.children))"
+                   [alt]="getNavLabel(group.parent)"
+                   width="20"
+                   height="20">
+              <div class="nav-label-wrapper" *ngIf="!isSidebarCollapsed">
+                <span class="nav-label nav-label--expanded">{{ getNavLabel(group.parent) }}</span>
+                <span class="nav-badge" *ngIf="getNavBadge(group.parent) as badge">{{ badge }}</span>
+              </div>
+              <div class="nav-label-wrapper nav-label-wrapper--collapsed" *ngIf="isSidebarCollapsed">
+                <span class="nav-label nav-label--collapsed">{{ getNavLabel(group.parent) }}</span>
+                <span class="nav-badge" *ngIf="getNavBadge(group.parent) as badge">{{ badge }}</span>
+              </div>
+              <mat-icon *ngIf="group.children?.length && !isSidebarCollapsed"
+                        class="submenu-arrow"
+                        [class.rotated]="isNavExpanded(group.parent, group.children)"
+                        (click)="toggleSubmenu(group.parent, $event)">
+                expand_more
+              </mat-icon>
+            </button>
+            <div class="nav-children"
+                 *ngIf="group.children?.length && isNavExpanded(group.parent, group.children) && !isSidebarCollapsed">
+              <button
+                type="button"
+                class="child-item"
+                *ngFor="let child of group.children; trackBy: trackChildNav"
+                [class.active]="dataService.getActiveTab()?.item === child.item"
+                (click)="routeNavs(child)">
+                {{ getNavLabel(child) }}
+              </button>
+            </div>
+          </ng-container>
+        </ng-container>
+      </div>
+
+      <div class="nav__workspace" *ngIf="getWorkspaceSidebarNavs().length">
+        <ng-container *ngFor="let group of getWorkspaceSidebarNavs(); trackBy: trackSidebarNav">
+          <ng-container *ngIf="!isNavItemDisabled(group.parent.item)">
+            <!-- <p class="section-label" *ngIf="group.sectionLabel" [style.visibility]="isSidebarCollapsed ? 'hidden' : 'visible'">{{ group.sectionLabel }}</p> -->
+            <button
+              type="button"
+              class="nav-item"
+              [class.active]="isSidebarItemActive(group.parent, group.children)"
+              [matTooltip]="getNavLabel(group.parent)"
+              matTooltipPosition="right"
+              [matTooltipDisabled]="!isSidebarCollapsed"
+              (click)="routeNavs(group.parent, group.children)">
+              <img class="nav-icon"
+                   [src]="getNavIconPath(group.parent.item, isSidebarItemActive(group.parent, group.children))"
+                   [alt]="getNavLabel(group.parent)"
+                   width="20"
+                   height="20">
+              <div class="nav-label-wrapper" *ngIf="!isSidebarCollapsed">
+                <span class="nav-label nav-label--expanded">{{ getNavLabel(group.parent) }}</span>
+                <span class="nav-badge" *ngIf="getNavBadge(group.parent) as badge">{{ badge }}</span>
+              </div>
+              <div class="nav-label-wrapper nav-label-wrapper--collapsed" *ngIf="isSidebarCollapsed">
+                <span class="nav-label nav-label--collapsed">{{ getNavLabel(group.parent) }}</span>
+                <span class="nav-badge" *ngIf="getNavBadge(group.parent) as badge">{{ badge }}</span>
+              </div>
+            </button>
+          </ng-container>
+        </ng-container>
+      </div>
+
+      <div class="nav__footer">
+        <button
+          class="logout"
+          [class.logout--collapsed]="isSidebarCollapsed"
+          matTooltip="Logout"
+          matTooltipPosition="right"
+          [matTooltipDisabled]="!isSidebarCollapsed"
+          (click)="logoutHandler()"
+          type="button">
+          <img src="/assets/images/logout.png" alt="logout"/>
+          <span class="nav-label nav-label--expanded" *ngIf="!isSidebarCollapsed">Logout</span>
+          <span class="nav-label nav-label--collapsed" *ngIf="isSidebarCollapsed">Logout</span>
+        </button>
+      </div>
+    </div>
+    <div class="content" [ngClass]="{'full-width': !isLoggedIn || hideNavigation, 'collapsed-nav': isSidebarCollapsed && isLoggedIn && !hideNavigation}">
+      <header *ngIf="isLoggedIn && !isVoiceAgentRoute() && !isSubscriptionRoute() && !isQaAgentTestRoute() &&  !isTrainRoute() && !isAgentOnboardingRoute() && !isAgentAuditRoute()">
+        <div class="action title">
+          <div class="title-row">
+            <p class="text">{{getActiveTabTitle()}}</p>
+            <span class="title-badge" *ngIf="isToolsNavActive()">Beta</span>
+          </div>
+          <p class="description">{{getActiveTabDescription()}}</p>
+        </div>
+      </header>
+      <div class="breadcrumbs" *ngIf="isLoggedIn && !isVoiceAgentRoute() && !isHomeRoute() && !isSubscriptionRoute() && !isSettingsRoute()  && !isQaAgentTestRoute() && !isAgentTestRoute()">
+        <div
+          *ngFor="let breadcrumb of breadcrumbs; let last = last"
+          class="breadcrumb"
+          [class.active]="breadcrumb.isActive"
+          [class.clickable]="breadcrumb.route && !breadcrumb.isActive"
+          (click)="navigateToBreadcrumb(breadcrumb)"
+        >
+          {{ breadcrumb.label }}
+          <span *ngIf="!last" class="separator"> /</span>
+        </div>
+      </div>
+      <div class="scrollable-content" [class.scrollable-content--full]="!isLoggedIn">
+        <router-outlet></router-outlet>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="loader-overlay" *ngIf="(dataService.isLoading$ | async) || !authResolved">
+  <div class="loader-spinner">
+    <div class="spinner">
+      <img src="assets/images/loader.gif">
+    </div>
+  </div>
+</div>
