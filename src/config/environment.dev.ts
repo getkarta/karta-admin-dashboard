@@ -3,7 +3,7 @@ export const environment = {
   staging: false,
   development: true,
   batchApiUrl: 'https://t61o9djpm8.execute-api.us-east-1.amazonaws.com/stage',
-  apiUrl: 'http://localhost:3000',
+  apiUrl: 'https://api-staging.getkarta.ai/',
   dashboardUrl: 'https://dashboard.getkarta.ai',
   /** When true, call details API only and show transcript from its response. When false, use transcript API only. */
   useDetailsApiForTranscript: true,
