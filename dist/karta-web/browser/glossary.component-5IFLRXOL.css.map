@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": ["src/app/train/glossary/glossary.component.css"],
-  "sourcesContent": [".table-container {\n  padding: 20px;\n  margin-top: 50px;\n  height: calc(100vh - 100px);\n  .table-footer{\n    display: flex;\n    justify-content: space-between;\n    align-items: center;\n    margin-top: 10px;\n  }\n \n}\n\n.header-section {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  margin-bottom: 10px;\n}\n\nh2 {\n  margin-bottom: 0px !important;\n  color: #333;\n  font-weight: 700;\n}\n\n.add-row-btn {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n} "],
-  "mappings": ";AAAA,CAAC;AACC,WAAS;AACT,cAAY;AACZ,UAAQ,KAAK,MAAM,EAAE;AAQvB;AAXA,CAAC,gBAIC,CAAC;AACC,WAAS;AACT,mBAAiB;AACjB,eAAa;AACb,cAAY;AACd;AAIF,CAAC;AACC,WAAS;AACT,mBAAiB;AACjB,eAAa;AACb,iBAAe;AACjB;AAEA;AACE,iBAAe;AACf,SAAO;AACP,eAAa;AACf;AAEA,CAAC;AACC,WAAS;AACT,eAAa;AACb,OAAK;AACP;",
-  "names": []
-}

@@ -1,0 +1,268 @@
+@use '../../styles/variables' as *;
+
+.page-content {
+  width: 100%;
+  max-width: 100%;
+
+  .head {
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 32px;
+    letter-spacing: 0.01em;
+    color: #1D1F2C;
+    margin-bottom: 8px;
+  }
+
+  .subtext {
+    color: $color-text-secondary;
+    font-size: 14px;
+    margin-bottom: 24px;
+    max-width: 640px;
+  }
+}
+
+.summary-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 24px;
+}
+
+.summary-card {
+  background: $color-white;
+  border: 1px solid $color-medium-gray;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0px 12px 24px -4px #919EAB1F;
+}
+
+.summary-card__label {
+  color: $color-text-secondary;
+  display: block;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.summary-card__value {
+  color: $color-primary;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.clients-card {
+  background: $color-white;
+  border: 1px solid $color-medium-gray;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0px 12px 24px -4px #919EAB1F;
+}
+
+.clients-card__top {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+  border-bottom: 1px solid $color-medium-gray;
+}
+
+.clients-card__top h2 {
+  color: $color-primary;
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.filter-tabs {
+  background: #f2f4f7;
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 6px;
+  padding: 6px;
+  margin: 0 20px 20px;
+}
+
+.filter-tabs button {
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: #475467;
+  margin: 0;
+  min-width: 72px;
+  padding: 8px 14px;
+}
+
+.filter-tabs button.active {
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 10%);
+  color: #101828;
+  font-weight: 600;
+}
+
+.action-banner {
+  background: $color-bg-light;
+  border-top: 1px solid $color-medium-gray;
+  border-bottom: 1px solid $color-medium-gray;
+  color: $color-primary;
+  font-size: 14px;
+  padding: 12px 20px;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.table-state {
+  color: $color-muted;
+  font-size: 14px;
+  padding: 16px 20px;
+}
+
+.table-state--error {
+  color: $color-primary;
+}
+
+.clients-table {
+  border-collapse: collapse;
+  min-width: 1100px;
+  width: 100%;
+}
+
+.clients-table th,
+.clients-table td {
+  border-bottom: 1px solid $color-medium-gray;
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.35;
+}
+
+.clients-table th {
+  color: $color-text-secondary;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+}
+
+.client-name {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.client-link {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: $color-primary;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.client-link:hover {
+  color: $color-muted;
+  text-decoration: underline;
+}
+
+.client-name span {
+  color: $color-text-secondary;
+  font-size: 13px;
+}
+
+.client-code,
+.client-owner {
+  font-size: 13px;
+  color: $color-muted;
+}
+
+.agent-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.agent-tag {
+  background: $color-secondary-dark;
+  border-radius: 999px;
+  color: $color-primary;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+}
+
+.status-pill {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 10px;
+}
+
+.status-pill--active {
+  background: rgba(0, 167, 111, 0.08);
+  color: #00A76F;
+}
+
+.status-pill--draft {
+  background: $color-bg-light;
+  color: $color-primary;
+}
+
+.status-pill--archived {
+  background: rgba(24, 144, 255, 0.08);
+  color: #1890FF;
+}
+
+.row-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.inline-button {
+  background: transparent;
+  border: 0;
+  color: $color-primary;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.inline-button--danger {
+  color: $color-primary;
+}
+
+.inline-button:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 992px) {
+  .container {
+    flex-direction: column;
+    height: auto;
+    padding: 16px;
+
+    .sidebar {
+      width: 100%;
+      padding: 0;
+    }
+
+    .content {
+      padding: 0;
+    }
+  }
+
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

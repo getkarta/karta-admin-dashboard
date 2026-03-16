@@ -1,0 +1,212 @@
+<div class="page-content">
+  <header class="page-header">
+    <a class="back-link" (click)="goBack()" tabindex="0" (keydown.enter)="goBack()">← Clients</a>
+    <h1 class="page-title">{{ isEditMode ? 'Update Client' : 'Create Client' }}</h1>
+    <p class="page-description">
+      {{ isEditMode
+        ? 'Update the client name and choose which agents remain enabled.'
+        : 'Create a new client record. Agents can be configured after the client is created.' }}
+    </p>
+    <span class="client-badge" *ngIf="isEditMode && clientCode">{{ clientCode }}</span>
+  </header>
+
+  <section class="card client-form-card">
+      <h2 class="card__title">Basic information</h2>
+      <form [formGroup]="clientForm" (ngSubmit)="onSubmit()" class="client-form">
+        <label class="form-group">
+          <span class="form-label">Client Name</span>
+          <input
+            type="text"
+            formControlName="clientName"
+            placeholder="Enter client name"
+            class="form-input" />
+          <small
+            class="field-error"
+            *ngIf="clientForm.controls['clientName'].touched && clientForm.controls['clientName'].invalid">
+            Client name must be at least 3 characters long.
+          </small>
+        </label>
+
+        <label class="form-group" *ngIf="isEditMode">
+          <span class="form-label">Enabled Agents</span>
+          <select formControlName="enabledAgents" multiple class="form-select-multi">
+            <option *ngFor="let agent of availableAgents" [value]="agent.value">
+              {{ agent.label }}
+            </option>
+          </select>
+          <small class="field-help">
+            If no agents are enabled, the client behaves like a draft setup.
+          </small>
+        </label>
+
+        <div class="message message--error" *ngIf="errorMessage">{{ errorMessage }}</div>
+        <div class="message message--success" *ngIf="successMessage">{{ successMessage }}</div>
+
+        <div class="form-actions">
+          <button type="button" class="button button-transparent" (click)="goBack()">Cancel</button>
+          <button type="submit" class="button" [disabled]="isSubmitting">
+            {{ isSubmitting
+              ? (isEditMode ? 'Updating...' : 'Creating...')
+              : (isEditMode ? 'Update Client' : 'Create Client') }}
+          </button>
+        </div>
+      </form>
+  </section>
+
+  <section class="card user-management" *ngIf="isEditMode">
+        <div class="users-section-header">
+          <div class="card__header">
+            <h2 class="card__title">Users</h2>
+            <p class="card__description">Members under this client.</p>
+          </div>
+          <button type="button" class="button" (click)="openAddUserModal()">Add User</button>
+        </div>
+        <div class="users-list-wrap" *ngIf="clientUsers.length > 0 || isLoadingUsers">
+          <p *ngIf="isLoadingUsers">Loading users...</p>
+          <table class="users-table" *ngIf="!isLoadingUsers && clientUsers.length > 0">
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Added</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let u of clientUsers">
+                <td>{{ u.email }}</td>
+                <td>{{ u.role }}</td>
+                <td>{{ u.createdAt | date:'short' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+  </section>
+
+  <!-- Add User modal -->
+  <div class="modal-overlay" *ngIf="showAddUserModal" (click)="closeAddUserModal()">
+    <div class="modal-box" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3 class="modal-title">Add User</h3>
+        <button type="button" class="modal-close" aria-label="Close" (click)="closeAddUserModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label class="form-group">
+          <span class="form-label">User Email</span>
+          <input
+            type="email"
+            [(ngModel)]="newUserEmail"
+            [ngModelOptions]="{ standalone: true }"
+            placeholder="Enter user email"
+            class="form-input" />
+        </label>
+        <label class="form-group">
+          <span class="form-label">Password</span>
+          <input
+            type="password"
+            [(ngModel)]="newUserPassword"
+            [ngModelOptions]="{ standalone: true }"
+            placeholder="Enter password"
+            class="form-input" />
+          <small class="field-help">Password must be at least 6 characters long.</small>
+        </label>
+        <div class="message message--error" *ngIf="userErrorMessage">{{ userErrorMessage }}</div>
+        <div class="message message--success" *ngIf="userSuccessMessage">{{ userSuccessMessage }}</div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="button button-transparent" (click)="closeAddUserModal()">Cancel</button>
+        <button type="button" class="button" [disabled]="isAddingUser" (click)="addUser()">
+          {{ isAddingUser ? 'Adding...' : 'Add User' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <section class="card pricing-management" *ngIf="isEditMode">
+        <div class="card__header">
+          <h2 class="card__title">Pricing & Billing</h2>
+          <p class="card__description">Set billing tier and custom credit-per-unit pricing for this client.</p>
+        </div>
+
+        <div class="pricing-form">
+          <div class="billing-tier-row">
+            <label class="form-group">
+              <span class="form-label">Billing tier</span>
+              <select [(ngModel)]="billingTier" [ngModelOptions]="{ standalone: true }" class="form-input">
+                <option *ngFor="let t of BILLING_TIERS" [value]="t.value">{{ t.label }}</option>
+              </select>
+            </label>
+            <div class="form-group form-group--checkbox">
+              <label class="checkbox-label">
+                <input type="checkbox" [(ngModel)]="allowNegativeBalance" [ngModelOptions]="{ standalone: true }" class="checkbox-input" />
+                <span>Allow negative balance</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="custom-pricing-block">
+            <h3 class="block-title">Custom pricing (credits per unit)</h3>
+            <p class="field-help">Add rules for feature + unit type. Empty list keeps existing custom pricing unchanged when saving.</p>
+            <div class="pricing-rules-wrap">
+              <div class="pricing-rule-header">
+                <span>Feature</span>
+                <span>Unit type</span>
+                <span>Credits</span>
+                <span>Rounding</span>
+                <span>Interval (s)</span>
+                <span>Min (s)</span>
+                <span></span>
+              </div>
+              <div class="pricing-rule-row" *ngFor="let rule of pricingRules; let i = index">
+                <select [(ngModel)]="rule.featureCode" [ngModelOptions]="{ standalone: true }">
+                  <option *ngFor="let f of FEATURE_CODES" [value]="f.value">{{ f.label }}</option>
+                </select>
+                <select [(ngModel)]="rule.unitType" [ngModelOptions]="{ standalone: true }">
+                  <option *ngFor="let u of UNIT_TYPES" [value]="u.value">{{ u.label }}</option>
+                </select>
+                <input
+                  type="number"
+                  [(ngModel)]="rule.creditPerUnit"
+                  [ngModelOptions]="{ standalone: true }"
+                  placeholder="Credits"
+                  min="0.01"
+                  step="0.01">
+                <select [(ngModel)]="rule.rounding" [ngModelOptions]="{ standalone: true }">
+                  <option *ngFor="let r of ROUNDING_TYPES" [value]="r.value">{{ r.label }}</option>
+                </select>
+                <ng-container *ngIf="rule.featureCode === 'voice'; else noIntervalMin">
+                  <input
+                    type="number"
+                    [(ngModel)]="rule.intervalSeconds"
+                    [ngModelOptions]="{ standalone: true }"
+                    placeholder="Interval (s)"
+                    min="1"
+                    title="Optional: billing interval for seconds-based units">
+                  <input
+                    type="number"
+                    [(ngModel)]="rule.minimumSeconds"
+                    [ngModelOptions]="{ standalone: true }"
+                    placeholder="Min (s)"
+                    min="0"
+                    title="Optional: minimum duration for seconds-based units">
+                </ng-container>
+                <ng-template #noIntervalMin>
+                  <span class="pricing-rule-placeholder">—</span>
+                  <span class="pricing-rule-placeholder">—</span>
+                </ng-template>
+                <button type="button" class="button button-transparent button-small" (click)="removePricingRule(i)">Remove</button>
+              </div>
+            </div>
+            <button type="button" class="button button-secondary" (click)="addPricingRule()">+ Add rule</button>
+          </div>
+
+          <div class="message message--error" *ngIf="pricingErrorMessage">{{ pricingErrorMessage }}</div>
+          <div class="message message--success" *ngIf="pricingSuccessMessage">{{ pricingSuccessMessage }}</div>
+          <div class="form-actions">
+            <button type="button" class="button"
+              [disabled]="isSavingPricing"
+              (click)="savePricing()">
+              {{ isSavingPricing ? 'Saving...' : 'Save pricing' }}
+            </button>
+          </div>
+        </div>
+  </section>
