@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": ["src/app/mermaid.component.css"],
-  "sourcesContent": [".mermaid-container {\n    display: flex;\n    justify-content: center;\n    align-items: center;\n    width: 100%;\n    overflow: auto;\n    text-align: center;\n    color: #717680;\n    font-size: 14px;\n    font-weight: 600;\n    position: relative;\n}\n\n.mermaid {\n    width: 100%;\n    max-width: 100%;\n    height: 100%;\n    max-height: 100%;\n    display: flex;\n    justify-content: center;\n    align-items: center;\n}\n\n.mermaid svg {\n    width: 100% !important;\n    height: 100%;\n    display: block;\n    margin: auto;\n}\n\n/* Zoom Buttons */\n.zoom-controls {\n    position: absolute;\n    top: 10px;\n    right: 10px;\n    display: flex;\n    flex-direction: column;\n}\n\n.zoom-btn {\n    background-color: #333;\n    color: white;\n    border: none;\n    padding: 5px 10px;\n    margin: 2px;\n    cursor: pointer;\n    font-size: 16px;\n    border-radius: 5px;\n}\n\n.zoom-btn:hover {\n    background-color: #555;\n}\n"],
-  "mappings": ";AAAA,CAAC;AACG,WAAS;AACT,mBAAiB;AACjB,eAAa;AACb,SAAO;AACP,YAAU;AACV,cAAY;AACZ,SAAO;AACP,aAAW;AACX,eAAa;AACb,YAAU;AACd;AAEA,CAAC;AACG,SAAO;AACP,aAAW;AACX,UAAQ;AACR,cAAY;AACZ,WAAS;AACT,mBAAiB;AACjB,eAAa;AACjB;AAEA,CAVC,QAUQ;AACL,SAAO;AACP,UAAQ;AACR,WAAS;AACT,UAAQ;AACZ;AAGA,CAAC;AACG,YAAU;AACV,OAAK;AACL,SAAO;AACP,WAAS;AACT,kBAAgB;AACpB;AAEA,CAAC;AACG,oBAAkB;AAClB,SAAO;AACP,UAAQ;AACR,WAAS,IAAI;AACb,UAAQ;AACR,UAAQ;AACR,aAAW;AACX,iBAAe;AACnB;AAEA,CAXC,QAWQ;AACL,oBAAkB;AACtB;",
-  "names": []
-}

@@ -181,7 +181,7 @@ export class AppComponent implements OnInit, AfterViewInit, AfterViewChecked, On
         this.startRouteLoader();
       }
 
-      const url:any = this.navs.find(x=>x.item == event.url?.slice(1));
+      const url = this.navs.find((x: TabItem) => x.item === event.url?.slice(1));
       if(url) {
         this.dataService.setActiveTab(url);
       }
@@ -243,7 +243,7 @@ export class AppComponent implements OnInit, AfterViewInit, AfterViewChecked, On
       return [];
     }
 
-    const navMap = new Map(navItems.map(item => [item.item, item]));
+    const navMap = new Map(navItems.map((item: TabItem) => [item.item, item]));
     const consumedChildren = new Set<string>();
     const groups: SidebarNavGroup[] = [];
     const parentKeys = new Set(this.sidebarStructure.map(entry => entry.key));
@@ -270,7 +270,7 @@ export class AppComponent implements OnInit, AfterViewInit, AfterViewChecked, On
       });
     }
 
-    navItems.forEach(item => {
+    navItems.forEach((item: TabItem) => {
       if (parentKeys.has(item.item) || consumedChildren.has(item.item)) {
         return;
       }
@@ -559,7 +559,7 @@ export class AppComponent implements OnInit, AfterViewInit, AfterViewChecked, On
     this.dataService.setAgentMode(this.agentType);
 
     // Subscribe to dynamic breadcrumb updates
-    this.dataService.breadcrumbs$.subscribe(breadcrumbs => {
+    this.dataService.breadcrumbs$.subscribe((breadcrumbs: Breadcrumb[]) => {
       if (breadcrumbs.length > 0) {
         this.breadcrumbs = breadcrumbs;
         this.cdr.detectChanges();
@@ -595,7 +595,7 @@ export class AppComponent implements OnInit, AfterViewInit, AfterViewChecked, On
 
         }
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         console.error('Token verification failed', err);
         this.dataService.setIsLoggedIn(false);
       })
@@ -604,7 +604,7 @@ export class AppComponent implements OnInit, AfterViewInit, AfterViewChecked, On
         this.dataService.showLoader(false);
       });
 
-    this.subscription = this.dataService.getIsLoggedIn().subscribe(value => {
+    this.subscription = this.dataService.getIsLoggedIn().subscribe((value: boolean) => {
       this.isLoggedIn = value;
     });
   }
@@ -680,13 +680,13 @@ export class AppComponent implements OnInit, AfterViewInit, AfterViewChecked, On
 
   private ensureAlwaysVisibleNavs(): void {
     const order = new Map<string, number>();
-    this.dataService.navs.forEach((nav, index) => {
+    this.dataService.navs.forEach((nav: TabItem, index: number) => {
       order.set(nav.item, index);
     });
 
     const additions = Array.from(this.alwaysVisibleNavItems)
-      .filter((item) => !this.navs.some((nav) => nav.item === item))
-      .map((item) => this.dataService.navs.find((nav) => nav.item === item))
+      .filter((item) => !this.navs.some((nav: TabItem) => nav.item === item))
+      .map((item) => this.dataService.navs.find((nav: TabItem) => nav.item === item))
       .filter((nav): nav is TabItem => Boolean(nav));
 
     if (additions.length === 0) {
@@ -907,11 +907,11 @@ export class AppComponent implements OnInit, AfterViewInit, AfterViewChecked, On
   }
 
   getActiveTabLabel() {
-    return this.dataService.getActiveTab().label;
+    return this.dataService.getActiveTab()?.label ?? '';
   }
 
   getActiveTabTitle() {
-    return this.dataService.getActiveTab().title;
+    return this.dataService.getActiveTab()?.title ?? '';
   }
 
   isToolsNavActive(): boolean {
@@ -919,7 +919,7 @@ export class AppComponent implements OnInit, AfterViewInit, AfterViewChecked, On
   }
 
   getActiveTabDescription() {
-    return this.dataService.getActiveTab().description;
+    return this.dataService.getActiveTab()?.description ?? '';
   }
 
   isVoiceAgentRoute(): boolean {
@@ -1054,7 +1054,7 @@ export class AppComponent implements OnInit, AfterViewInit, AfterViewChecked, On
     this.currentAgentMode = 'All';
     this.dataService.setAgentMode(this.agentType);
     this.applyAgentTypeNavs(this.agentType);
-    this.dataService.setActiveTab(this.dataService.navs.find(nav => nav.item === 'home') || this.dataService.navs[0]);
+    this.dataService.setActiveTab(this.dataService.navs.find((nav: TabItem) => nav.item === 'home') || this.dataService.navs[0]);
     this.cdr.detectChanges();
     this.scheduleAgentNameTruncationCheck();
   }
