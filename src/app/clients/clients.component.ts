@@ -30,7 +30,7 @@ export interface ClientRow {
 export class ClientsComponent implements OnInit {
   clients: ClientRow[] = [];
 
-  selectedTab: 'all' | 'active' | 'draft' | 'archived' = 'all';
+  selectedTab: 'all' | 'active' | 'archived' = 'all';
   actionMessage = 'Loading clients from the backend.';
   isLoading = false;
   loadError = '';
@@ -53,10 +53,6 @@ export class ClientsComponent implements OnInit {
     return this.clients.filter((client) => client.status === 'Active').length;
   }
 
-  get draftClients(): number {
-    return this.clients.filter((client) => client.status === 'Draft').length;
-  }
-
   get archivedClients(): number {
     return this.clients.filter((client) => client.status === 'Archived').length;
   }
@@ -71,7 +67,7 @@ export class ClientsComponent implements OnInit {
     );
   }
 
-  setTab(tab: 'all' | 'active' | 'draft' | 'archived'): void {
+  setTab(tab: 'all' | 'active' | 'archived'): void {
     this.selectedTab = tab;
   }
 
