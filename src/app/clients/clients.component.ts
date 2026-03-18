@@ -104,7 +104,7 @@ export class ClientsComponent implements OnInit {
 
     try {
       await firstValueFrom(
-        this.http.delete(`${this.apiBase}/client/${client.clientCode}`, {
+        this.http.delete(`${this.apiBase}/clients/${client.clientCode}`, {
           headers: new HttpHeaders({
             Authorization: `Bearer ${accessToken}`
           })
@@ -134,7 +134,7 @@ export class ClientsComponent implements OnInit {
 
     try {
       const response = await firstValueFrom(
-        this.http.get<any>(`${this.apiBase}/admin/clients`, {
+        this.http.get<any>(`${this.apiBase}/clients`, {
           headers: new HttpHeaders({
             Authorization: `Bearer ${accessToken}`
           })

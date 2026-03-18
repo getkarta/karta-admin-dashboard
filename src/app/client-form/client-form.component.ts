@@ -29,7 +29,7 @@ export class ClientFormComponent implements OnInit {
   isLoadingUsers = false;
   showAddUserModal = false;
 
-  // Pricing properties (aligned with backend PUT /client/:clientCode billing payload)
+  // Pricing properties (aligned with backend PUT /admin/clients/:clientCode/billing payload)
   pricingErrorMessage = '';
   pricingSuccessMessage = '';
   isSavingPricing = false;
@@ -137,7 +137,7 @@ export class ClientFormComponent implements OnInit {
     }
     try {
       const res = await firstValueFrom(
-        this.http.get<any>(`${this.apiBase}/admin/clients/${this.clientCode}`, {
+        this.http.get<any>(`${this.apiBase}/clients/${this.clientCode}`, {
           headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` })
         })
       );
@@ -221,7 +221,7 @@ export class ClientFormComponent implements OnInit {
       if (this.isEditMode) {
         await firstValueFrom(
           this.http.put(
-            `${this.apiBase}/admin/clients/${this.clientCode}`,
+            `${this.apiBase}/clients/${this.clientCode}`,
             {
               clientName: formValue.clientName,
               enabledAgents: formValue.enabledAgents
@@ -238,7 +238,7 @@ export class ClientFormComponent implements OnInit {
       } else {
         await firstValueFrom(
           this.http.post(
-            `${this.apiBase}/admin/clients`,
+            `${this.apiBase}/clients`,
             {
               clientName: formValue.clientName
             },
@@ -274,6 +274,12 @@ export class ClientFormComponent implements OnInit {
       this.userErrorMessage = 'Password must be at least 6 characters long.';
       return;
     }
+
+    const accessToken = localStorage.getItem('accessToken');
+    if (!accessToken) {
+      this.userErrorMessage = 'Session expired. Please log in again.';
+      return;
+    }
   
     this.isAddingUser = true;
     this.userErrorMessage = '';
@@ -282,11 +288,16 @@ export class ClientFormComponent implements OnInit {
     try {
       await firstValueFrom(
         this.http.post(
-          `${this.apiBase}/user/register`,
+          `${this.apiBase}/users`,
           {
             email: this.newUserEmail.trim(),
             password: this.newUserPassword,
             clientCode: this.clientCode
+          },
+          {
+            headers: new HttpHeaders({
+              Authorization: `Bearer ${accessToken}`
+            })
           }
         )
       );
@@ -325,7 +336,7 @@ export class ClientFormComponent implements OnInit {
     try {
       const res = await firstValueFrom(
         this.http.get<{ users: Array<{ email: string; role: string; createdAt?: string }> }>(
-          `${this.apiBase}/admin/clients/${this.clientCode}/users`,
+          `${this.apiBase}/clients/${this.clientCode}/users`,
           { headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` }) }
         )
       );
@@ -392,13 +403,11 @@ export class ClientFormComponent implements OnInit {
     try {
       await firstValueFrom(
         this.http.put(
-          `${this.apiBase}/admin/clients/${this.clientCode}`,
+          `${this.apiBase}/clients/${this.clientCode}/billing`,
           {
-            billing: {
-              tier: this.billingTier,
-              allowNegativeBalance: this.allowNegativeBalance,
-              ...(Object.keys(customPricing).length > 0 ? { customPricing } : {})
-            }
+            tier: this.billingTier,
+            allowNegativeBalance: this.allowNegativeBalance,
+            ...(Object.keys(customPricing).length > 0 ? { customPricing } : {})
           },
           {
             headers: new HttpHeaders({
