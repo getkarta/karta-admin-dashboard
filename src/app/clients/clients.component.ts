@@ -134,7 +134,7 @@ export class ClientsComponent implements OnInit {
 
     try {
       const response = await firstValueFrom(
-        this.http.get<any>(`${this.apiBase}/admin/clients`, {
+        this.http.get<any>(`${this.apiBase}/clients`, {
           headers: new HttpHeaders({
             Authorization: `Bearer ${accessToken}`
           })

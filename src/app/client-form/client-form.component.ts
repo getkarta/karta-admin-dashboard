@@ -137,7 +137,7 @@ export class ClientFormComponent implements OnInit {
     }
     try {
       const res = await firstValueFrom(
-        this.http.get<any>(`${this.apiBase}/admin/clients/${this.clientCode}`, {
+        this.http.get<any>(`${this.apiBase}/clients/${this.clientCode}`, {
           headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` })
         })
       );
@@ -221,7 +221,7 @@ export class ClientFormComponent implements OnInit {
       if (this.isEditMode) {
         await firstValueFrom(
           this.http.put(
-            `${this.apiBase}/admin/clients/${this.clientCode}`,
+            `${this.apiBase}/clients/${this.clientCode}`,
             {
               clientName: formValue.clientName,
               enabledAgents: formValue.enabledAgents
@@ -238,7 +238,7 @@ export class ClientFormComponent implements OnInit {
       } else {
         await firstValueFrom(
           this.http.post(
-            `${this.apiBase}/admin/clients`,
+            `${this.apiBase}/clients`,
             {
               clientName: formValue.clientName
             },
@@ -325,7 +325,7 @@ export class ClientFormComponent implements OnInit {
     try {
       const res = await firstValueFrom(
         this.http.get<{ users: Array<{ email: string; role: string; createdAt?: string }> }>(
-          `${this.apiBase}/admin/clients/${this.clientCode}/users`,
+          `${this.apiBase}/clients/${this.clientCode}/users`,
           { headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` }) }
         )
       );
