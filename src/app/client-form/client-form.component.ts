@@ -29,7 +29,7 @@ export class ClientFormComponent implements OnInit {
   isLoadingUsers = false;
   showAddUserModal = false;
 
-  // Pricing properties (aligned with backend PUT /client/:clientCode billing payload)
+  // Pricing: saved via PUT /admin/clients/:clientCode/billing (tier, allowNegativeBalance, customPricing)
   pricingErrorMessage = '';
   pricingSuccessMessage = '';
   isSavingPricing = false;
@@ -280,13 +280,25 @@ export class ClientFormComponent implements OnInit {
     this.userSuccessMessage = '';
   
     try {
+      const accessToken = localStorage.getItem('accessToken');
+      if (!accessToken) {
+        this.userErrorMessage = 'Session expired. Please log in again.';
+        return;
+      }
+
       await firstValueFrom(
         this.http.post(
-          `${this.apiBase}/user/register`,
+          `${this.apiBase}/users`,
           {
             email: this.newUserEmail.trim(),
             password: this.newUserPassword,
             clientCode: this.clientCode
+          },
+          {
+            headers: new HttpHeaders({
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            })
           }
         )
       );
@@ -392,13 +404,11 @@ export class ClientFormComponent implements OnInit {
     try {
       await firstValueFrom(
         this.http.put(
-          `${this.apiBase}/admin/clients/${this.clientCode}`,
+          `${this.apiBase}/clients/${this.clientCode}/billing`,
           {
-            billing: {
-              tier: this.billingTier,
-              allowNegativeBalance: this.allowNegativeBalance,
-              ...(Object.keys(customPricing).length > 0 ? { customPricing } : {})
-            }
+            tier: this.billingTier,
+            allowNegativeBalance: this.allowNegativeBalance,
+            ...(Object.keys(customPricing).length > 0 ? { customPricing } : {})
           },
           {
             headers: new HttpHeaders({

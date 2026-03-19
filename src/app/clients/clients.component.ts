@@ -30,10 +30,13 @@ export interface ClientRow {
 export class ClientsComponent implements OnInit {
   clients: ClientRow[] = [];
 
-  selectedTab: 'all' | 'active' | 'draft' | 'archived' = 'all';
+  selectedTab: 'all' | 'active' | 'archived' = 'all';
   actionMessage = 'Loading clients from the backend.';
   isLoading = false;
   loadError = '';
+  pageIndex = 0;
+  pageSize = 10;
+  readonly pageSizeOptions: number[] = [5, 10, 25, 50];
   private readonly apiBase = environment.apiUrl.replace(/\/$/, '');
 
   constructor(
@@ -53,10 +56,6 @@ export class ClientsComponent implements OnInit {
     return this.clients.filter((client) => client.status === 'Active').length;
   }
 
-  get draftClients(): number {
-    return this.clients.filter((client) => client.status === 'Draft').length;
-  }
-
   get archivedClients(): number {
     return this.clients.filter((client) => client.status === 'Archived').length;
   }
@@ -71,8 +70,51 @@ export class ClientsComponent implements OnInit {
     );
   }
 
-  setTab(tab: 'all' | 'active' | 'draft' | 'archived'): void {
+  get pagedClients(): ClientRow[] {
+    const list = this.visibleClients;
+    const start = this.pageIndex * this.pageSize;
+    return list.slice(start, start + this.pageSize);
+  }
+
+  get totalPages(): number {
+    const n = this.visibleClients.length;
+    return Math.max(1, Math.ceil(n / this.pageSize));
+  }
+
+  get pageRangeStart(): number {
+    if (!this.visibleClients.length) {
+      return 0;
+    }
+    return this.pageIndex * this.pageSize + 1;
+  }
+
+  get pageRangeEnd(): number {
+    return Math.min((this.pageIndex + 1) * this.pageSize, this.visibleClients.length);
+  }
+
+  setTab(tab: 'all' | 'active' | 'archived'): void {
     this.selectedTab = tab;
+    this.pageIndex = 0;
+  }
+
+  onPageSizeChange(size: number): void {
+    this.pageSize = Number(size);
+    this.pageIndex = 0;
+  }
+
+  prevPage(): void {
+    this.pageIndex = Math.max(0, this.pageIndex - 1);
+  }
+
+  nextPage(): void {
+    this.pageIndex = Math.min(this.totalPages - 1, this.pageIndex + 1);
+  }
+
+  private clampPageIndex(): void {
+    const maxIdx = Math.max(0, this.totalPages - 1);
+    if (this.pageIndex > maxIdx) {
+      this.pageIndex = maxIdx;
+    }
   }
 
   addClient(): void {
@@ -104,7 +146,7 @@ export class ClientsComponent implements OnInit {
 
     try {
       await firstValueFrom(
-        this.http.delete(`${this.apiBase}/client/${client.clientCode}`, {
+        this.http.delete(`${this.apiBase}/clients/${client.clientCode}`, {
           headers: new HttpHeaders({
             Authorization: `Bearer ${accessToken}`
           })
@@ -143,12 +185,14 @@ export class ClientsComponent implements OnInit {
 
       const rows = this.extractClientRows(response);
       this.clients = rows;
+      this.clampPageIndex();
       this.actionMessage = rows.length
         ? 'Clients loaded successfully from GET /admin/clients.'
         : 'No clients found yet. Add Client flow will be the next page we create.';
     } catch (error) {
       console.error('Failed to load clients', error);
       this.clients = [];
+      this.pageIndex = 0;
       this.loadError = 'Unable to load client list right now.';
       this.actionMessage = this.loadError;
     } finally {
