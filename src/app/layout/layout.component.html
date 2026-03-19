@@ -1,0 +1,18 @@
+<div class="shell">
+  <aside class="shell__sidebar">
+    <div class="shell__brand">
+      <span class="shell__brand-text">Admin Dashboard</span>
+    </div>
+    <nav class="shell__nav">
+      <button type="button" class="shell__nav-item" routerLink="/clients" routerLinkActive="shell__nav-item--active">
+        Clients
+      </button>
+    </nav>
+    <div class="shell__footer">
+      <button type="button" class="shell__logout" (click)="logout()">Logout</button>
+    </div>
+  </aside>
+  <main class="shell__main">
+    <router-outlet></router-outlet>
+  </main>
+</div>
