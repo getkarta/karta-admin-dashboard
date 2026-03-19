@@ -125,7 +125,7 @@ export class LoginComponent implements OnInit, OnDestroy {
 
       const userResponse = await this.fetchCurrentUser(loginResponse.accessToken);
 
-      if (userResponse.user.role === 'admin') {
+      if (userResponse.user.role === 'member') {
         await this.router.navigate(['/clients']);
       } else {
         this.clearSession();
