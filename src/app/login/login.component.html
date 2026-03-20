@@ -42,24 +42,27 @@
   <div class="login-panel">
     <div class="login-card" (keyup.enter)="onSignIn()">
       <p class="welcome-label">Welcome</p>
-      <h1>Sign in to Karta</h1>
+      <h1>Sign in to Karta Admin Dashboard</h1>
       <p class="card-subtitle">
-        Access the control room for your AI-powered contact center.
+        Access the admin dashboard for client management
       </p>
 
       <div class="form-fields">
         <label>
           <span>Email</span>
-          <input type="text" #eml [(ngModel)]="email" placeholder="you@getkarta.ai" />
+          <input type="text" [(ngModel)]="email" placeholder="you@getkarta.ai" />
         </label>
 
         <label>
           <span>Password</span>
-          <input type="password" #pwd [(ngModel)]="password" placeholder="••••••••" />
+          <input type="password" [(ngModel)]="password" placeholder="••••••••" />
         </label>
       </div>
-      <button class="button button-primary login-button" type="submit" (click)="onSignIn()">
-        Login
+      <button class="button button-primary login-button" 
+      type="submit"
+      [disabled]="isLoading"
+      (click)="onSignIn()">
+      {{ isLoading ? 'Signing in...' : 'Login' }}
       </button>
       <div *ngIf="errorMessage" class="error-message">{{ errorMessage }}</div>
       <p class="help-text">

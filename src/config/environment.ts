@@ -2,7 +2,7 @@ export const environment = {
   production: false,
   staging: false,
   development: true,
-  apiUrl: 'https://api.getkarta.ai/',
+  apiUrl: 'https://api-staging.getkarta.ai/admin',
   batchApiUrl: 'https://pw6m59869d.execute-api.us-east-1.amazonaws.com/prod',
   callLogsApiUrl: 'https://c1ne1qg5v5.execute-api.us-east-1.amazonaws.com/default',
   toolsApiUrl: 'https://4nvjwcqbdl.execute-api.us-east-1.amazonaws.com/stage',

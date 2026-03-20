@@ -1,0 +1,138 @@
+<div class="page-content">
+  <div class="head">Clients</div>
+  <div class="subtext">
+    Manage client onboarding, enabled agents, and archive actions from one workspace.
+    <span class="subtext__hint">Add users from a client’s <strong>Edit</strong> screen.</span>
+  </div>
+
+  <section class="summary-grid">
+    <article class="summary-card">
+      <span class="summary-card__label">Active</span>
+      <strong class="summary-card__value">{{ activeClients }}</strong>
+    </article>
+    <article class="summary-card">
+      <span class="summary-card__label">Archived</span>
+      <strong class="summary-card__value">{{ archivedClients }}</strong>
+    </article>
+  </section>
+
+  <section class="clients-card">
+    <div class="clients-card__top">
+      <div>
+        <h2>Client Directory</h2>
+      </div>
+
+      <div class="header-actions">
+        <button class="button" type="button" (click)="addClient()">Add Client</button>
+      </div>
+    </div>
+
+    <div class="filter-tabs-wrap">
+      <div class="filter-tabs">
+        <button
+          type="button"
+          [class.active]="selectedTab === 'all'"
+          (click)="setTab('all')">
+          All
+        </button>
+        <button
+          type="button"
+          [class.active]="selectedTab === 'active'"
+          (click)="setTab('active')">
+          Active
+        </button>
+        <button
+          type="button"
+          [class.active]="selectedTab === 'archived'"
+          (click)="setTab('archived')">
+          Archived
+        </button>
+      </div>
+    </div>
+
+    <div class="action-banner" *ngIf="actionMessage">
+      {{ actionMessage }}
+    </div>
+
+    <div class="table-state" *ngIf="isLoading">Loading clients...</div>
+    <div class="table-state table-state--error" *ngIf="!isLoading && loadError">
+      {{ loadError }}
+    </div>
+
+    <div class="table-wrapper">
+      <table class="clients-table" *ngIf="!isLoading && visibleClients.length">
+        <thead>
+          <tr>
+            <th scope="col">Client</th>
+            <th scope="col">Client Code</th>
+            <th scope="col">Enabled Agents</th>
+            <th scope="col">Status</th>
+            <th scope="col">Owner</th>
+            <th scope="col">Created On</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let client of pagedClients">
+            <td>
+              <div class="client-name">
+                <button type="button" class="client-link" (click)="editClient(client)">
+                  {{ client.clientName }}
+                </button>
+                <span>Admin managed account</span>
+              </div>
+            </td>
+            <td class="client-code">{{ client.clientCode }}</td>
+            <td>
+              <div class="agent-tags">
+                <span class="agent-tag" *ngFor="let agent of client.enabledAgents">
+                  {{ agent }}
+                </span>
+              </div>
+            </td>
+            <td>
+              <span
+                class="status-pill"
+                [ngClass]="{
+                  'status-pill--active': client.status === 'Active',
+                  'status-pill--draft': client.status === 'Draft',
+                  'status-pill--archived': client.status === 'Archived'
+                }">
+                {{ client.status }}
+              </span>
+            </td>
+            <td class="client-owner">{{ client.owner }}</td>
+            <td>{{ client.createdOn }}</td>
+            <td>
+              <div class="row-actions">
+                <button type="button" class="inline-button" (click)="editClient(client)">Edit</button>
+                <button type="button" class="inline-button inline-button--danger" (click)="archiveClient(client)">
+                  Archive
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="table-pagination" *ngIf="!isLoading && !loadError && visibleClients.length">
+        <span class="table-pagination__info">{{ pageRangeStart }}–{{ pageRangeEnd }} of {{ visibleClients.length }}</span>
+        <div class="table-pagination__controls">
+          <label class="table-pagination__size">
+            Rows
+            <select [ngModel]="pageSize" (ngModelChange)="onPageSizeChange($event)">
+              <option *ngFor="let n of pageSizeOptions" [ngValue]="n">{{ n }}</option>
+            </select>
+          </label>
+          <button type="button" class="inline-button" [disabled]="pageIndex === 0" (click)="prevPage()">Previous</button>
+          <span class="table-pagination__page">{{ pageIndex + 1 }} / {{ totalPages }}</span>
+          <button type="button" class="inline-button" [disabled]="pageIndex >= totalPages - 1" (click)="nextPage()">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-state" *ngIf="!isLoading && !loadError && !visibleClients.length">
+      No clients available for the selected filter.
+    </div>
+  </section>
+</div>

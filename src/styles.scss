@@ -101,11 +101,6 @@ quill-editor {
     width: 100% !important;
     display: block !important;
 }
-app-mermaid svg {
-    width: 100% !important;
-    height: 100% !important;
-    max-height: 100%;
-}
 
 .status-badge {
     height: 22px;
@@ -201,34 +196,58 @@ mat-sidenav.mat-drawer.mat-sidenav.sidenav {
     color: #b4dc85;
 
 }
-// .button {
-//     border: none;
-//     border-radius: 5px;
-//     background: #212B36;
-//     font-size: 14px;
-//     color: #fff;
-//     padding: 5px 16px;
+.button {
+    border: none;
+    border-radius: 8px;
+    background: $color-primary;
+    font-size: 12px;
+    color: $color-white;
+    padding: 8px 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
 
-//     &.secondary {
-//         background: #919EAB33;
-//         color: #919EABCC;
-//     }
+    &.button-secondary {
+        background: $color-secondary-dark;
+        color: $color-muted;
+    }
 
-//     &.add {
-//         display: flex;
-//         flex-direction: row;
-//         align-items: center;
-//         img {
-//             margin-right: 10px;
-//         }
-//     }
-// }
-// button:disabled {
-//     background: #7e808133 !important;
-//     color: #919EABCC !important;
-//     pointer-events: none;
+    &.button-transparent {
+        background: transparent !important;
+        color: $color-primary !important;
+    }
 
-//   }
+    &.button-small {
+        padding: 6px 12px;
+        font-size: 11px;
+    }
+
+    &.secondary {
+        background: rgba(0, 167, 111, 0.08);
+        color: #00A76F;
+        border: 1px solid rgba(0, 167, 111, 0.2);
+    }
+
+    &.add {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        img {
+            margin-right: 10px;
+        }
+    }
+
+    &:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+}
+button:disabled {
+    background: #7e808133 !important;
+    color: #919EABCC !important;
+    pointer-events: none;
+
+  }
 
 .aligned {
     display: flex;

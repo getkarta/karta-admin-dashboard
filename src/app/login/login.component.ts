@@ -1,7 +1,21 @@
-import { Component, ElementRef, ViewChild, OnInit, OnDestroy } from '@angular/core';
-import { ApiService } from '../services/api.service';
-import { DataService } from '../services/data.service';
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Router } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
+import { environment } from '../../config/environment';
+
+
+interface LoginResponse {
+  accessToken: string;
+  refreshToken: string;
+}
+
+interface CurrentUserResponse {
+  user: {
+    email: string;
+    role: string;
+  };
+}
 
 @Component({
   selector: 'app-login',
@@ -12,9 +26,6 @@ import { Router } from '@angular/router';
 })
 export class LoginComponent implements OnInit, OnDestroy {
 
-
-  user:any={};
-  loggedIn = false;
 
   email:string = "";
   password:string = "";
@@ -52,37 +63,34 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
   ];
   private rotationIntervalId: ReturnType<typeof setInterval> | null = null;
+  private readonly apiBase = environment.apiUrl.replace(/\/$/, '');
 
-  @ViewChild('eml') emailInput!: ElementRef;
-  @ViewChild('pwd') pwdInput!: ElementRef;
 
   constructor(
-    private api: ApiService,
-    private dataService: DataService,
+    private http: HttpClient,
     private router: Router
   ) {}
 
-  ngOnInit() {
+  async ngOnInit(): Promise<void> {
     this.startHeroRotation();
-    // Check if user is already logged in
+
     const accessToken = localStorage.getItem('accessToken');
-    
-    if (accessToken) {
-      // Verify the token with the server
-      this.api.verifyToken().then((res: any) => {
-        if (res && res.user) {
-          // User is already authenticated, redirect to home
-          console.log('User already logged in, redirecting to home');
-          this.router.navigate(['/home']);
-        }
-        // If token is invalid, api.verifyToken() will handle the cleanup
-        // and user will stay on login page
-      }).catch((err: any) => {
-        // Token verification failed, clear invalid token and stay on login page
-        console.log('Token verification failed, staying on login page');
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-      });
+    if (!accessToken) {
+      return;
+    }
+
+    try {
+      const userResponse = await this.fetchCurrentUser(accessToken);
+
+      if (userResponse.user.role === 'admin') {
+        await this.router.navigate(['/clients']);
+      } else {
+        this.clearSession();
+        this.errorMessage = 'Access denied. Admin account required.';
+        await this.router.navigate(['/login']);
+      }
+    } catch (error) {
+      this.clearSession();
     }
   }
 
@@ -90,65 +98,67 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.stopHeroRotation();
   }
 
-  onSignIn() {
+  async onSignIn(): Promise<void> {
+    if (!this.email.trim() || !this.password.trim()) {
+      this.errorMessage = 'Email and password are required.';
+      return;
+    }
+
     this.isLoading = true;
-    this.errorMessage = "";
-    
-    this.api.verifyLogin(this.email, this.password).then((res: any) => {
-      this.isLoading = false;
-      if (res && res.accessToken) {
-        this.setAgentTypesAndNavigate();
-      } else {
-        this.errorMessage = "Invalid credentials. Please try again.";
+    this.errorMessage = '';
+
+    try {
+      const loginResponse = await firstValueFrom(
+        this.http.post<LoginResponse>(`${this.apiBase}/user/login`, {
+          email: this.email.trim(),
+          password: this.password
+        })
+      );
+
+      if (!loginResponse?.accessToken || !loginResponse?.refreshToken) {
+        this.errorMessage = 'Invalid credentials. Please try again.';
         this.clearInputs();
+        return;
       }
-    }).catch((err: any) => {
-      this.isLoading = false;
-      console.log(err);
-      this.errorMessage = "Login failed. Please check your credentials and try again.";
+      localStorage.setItem('accessToken', loginResponse.accessToken);
+      localStorage.setItem('refreshToken', loginResponse.refreshToken);
+
+      const userResponse = await this.fetchCurrentUser(loginResponse.accessToken);
+
+      if (userResponse.user.role === 'member') {
+        await this.router.navigate(['/clients']);
+      } else {
+        this.clearSession();
+        this.errorMessage = 'Access denied. Admin account required.';
+        await this.router.navigate(['/login']);
+      }
+    } catch (error) {
+      console.error(error);
+      this.errorMessage = 'Login failed. Please check your credentials and try again.';
       this.clearInputs();
-    });
+      this.clearSession();
+    } finally {
+      this.isLoading = false;
+    }
   }
 
-
-
-  // signInWithGoogle(): void {
-  //   this.authService.signIn(GoogleLoginProvider.PROVIDER_ID);
-  // }
-
-  // signOut(): void {
-  //   this.authService.signOut();
-  // }
-
-  private setAgentTypesAndNavigate(): void {
-    const returnUrl = localStorage.getItem('returnUrl');
-    const navigateTo = returnUrl || '/home';
-    if (returnUrl) {
-      localStorage.removeItem('returnUrl');
-    }
-    this.api.getKartaAgents().then((res: any) => {
-      this.dataService.agents = res;
-      const agentTypes = [...new Set(
-        (Array.isArray(res) ? res : [])
-          .map((item: any) => item?.type ?? item?.agentType)
-          .filter((t: unknown): t is string => !!t && typeof t === 'string')
-      )];
-      try {
-        localStorage.setItem('agentTypes', JSON.stringify(agentTypes));
-      } catch (e) {
-        console.warn('Failed to store agentTypes in localStorage', e);
-      }
-    }).catch(() => {}).finally(() => {
-      this.router.navigate([navigateTo]);
-    });
+  private fetchCurrentUser(accessToken: string): Promise<CurrentUserResponse> {
+    return firstValueFrom(
+      this.http.get<CurrentUserResponse>(`${this.apiBase}/user`, {
+        headers: new HttpHeaders({
+          Authorization: `Bearer ${accessToken}`
+        })
+      })
+    );
+  }
+  private clearSession(): void {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
   }
 
   clearInputs() {
     this.email = "";
     this.password = "";
-    // Optionally, clear the input fields using ViewChild if needed
-    // this.emailInput.nativeElement.value = '';
-    // this.pwdInput.nativeElement.value = '';
   }
 
   private startHeroRotation() {

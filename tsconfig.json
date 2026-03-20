@@ -18,7 +18,6 @@
     "importHelpers": true,
     "target": "ES2022",
     "module": "ES2022",
-    "types": ["turndown-plugin-gfm"],
     "typeRoots": [
       "node_modules/@types",
       "src/types"
