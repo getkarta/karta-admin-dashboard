@@ -80,15 +80,9 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
 
     try {
-      const userResponse = await this.fetchCurrentUser(accessToken);
-
-      if (userResponse.user.role === 'admin') {
-        await this.router.navigate(['/clients']);
-      } else {
-        this.clearSession();
-        this.errorMessage = 'Access denied. Admin account required.';
-        await this.router.navigate(['/login']);
-      }
+      await this.fetchCurrentUser(accessToken);
+      await this.router.navigate(['/clients']);
+      
     } catch (error) {
       this.clearSession();
     }
@@ -123,15 +117,10 @@ export class LoginComponent implements OnInit, OnDestroy {
       localStorage.setItem('accessToken', loginResponse.accessToken);
       localStorage.setItem('refreshToken', loginResponse.refreshToken);
 
-      const userResponse = await this.fetchCurrentUser(loginResponse.accessToken);
+      await this.fetchCurrentUser(loginResponse.accessToken);
 
-      if (userResponse.user.role === 'member') {
-        await this.router.navigate(['/clients']);
-      } else {
-        this.clearSession();
-        this.errorMessage = 'Access denied. Admin account required.';
-        await this.router.navigate(['/login']);
-      }
+      await this.router.navigate(['/clients']);
+      
     } catch (error) {
       console.error(error);
       this.errorMessage = 'Login failed. Please check your credentials and try again.';
