@@ -8,8 +8,8 @@
 
 .page-header {
   position: relative;
-  margin-bottom: 28px;
-  padding-bottom: 20px;
+  margin-bottom: 18px;
+  padding-bottom: 10px;
 }
 
 .back-link {
@@ -42,8 +42,8 @@
   font-size: 15px;
   line-height: 1.5;
   color: $color-text-secondary;
-  margin: 0;
-  max-width: 560px;
+  margin: 0px;
+  max-width: 600px;
 }
 
 .client-badge {
@@ -76,7 +76,7 @@
   font-size: 18px;
   font-weight: 600;
   color: $color-primary;
-  margin: 0 0 4px 0;
+  margin: 0 0 4px 0 !important;
 }
 
 .card__header {
@@ -90,21 +90,269 @@
   line-height: 1.45;
 }
 
-.client-form-card .card__title {
-  margin-bottom: 20px;
+.client-form-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin-bottom: 2px;
+
+  .card__title {
+    margin: 0;
+  }
+
+  .client-badge {
+    margin-top: 0;
+  }
 }
 
 // ----- Form -----
 .client-form {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 12px;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
+}
+
+/* Client name: 30% of form/card width on larger viewports */
+.form-group--client-name {
+  align-items: flex-start;
+  align-self: flex-start;
+  width: 100%;
+  max-width: 100%;
+
+  .form-input {
+    width: 30%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+@media (max-width: 600px) {
+  .form-group--client-name .form-input {
+    width: 100%;
+  }
+}
+
+/* Update client: Data residency & Voice stacked below Enabled Agents */
+.basic-info-post-agents {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+  width: 100%;
+
+  .form-group--data-residency {
+    align-self: flex-start;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .residency-dd {
+    width: 100%;
+    max-width: min(100%, 20rem);
+    min-width: 0;
+  }
+
+  .form-input--fit-label {
+    width: 100%;
+    max-width: min(100%, 20rem);
+  }
+}
+
+/* Enabled agents: multiple selection via black checkboxes */
+.form-group--enabled-agents {
+  align-items: flex-start;
+}
+
+.agent-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.agent-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: $color-primary;
+  user-select: none;
+
+  input[type='checkbox'] {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    cursor: pointer;
+    accent-color: $color-primary;
+    border-radius: 4px;
+  }
+
+  &:focus-within {
+    outline: none;
+  }
+
+  input[type='checkbox']:focus-visible {
+    outline: 2px solid $color-primary;
+    outline-offset: 2px;
+  }
+}
+
+.agent-checkbox-row__text {
+  line-height: 1.45;
+}
+
+/* Edit User modal: role picker matches Data Residency custom dropdown width */
+.form-group--edit-user-role {
+  align-items: flex-start;
+
+  .residency-dd {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .residency-dd__trigger {
+    width: 100%;
+  }
+}
+
+/* Data residency & voice concurrency: compact width, label above control */
+.form-group--data-residency {
+  align-items: flex-start;
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.form-input--fit-label {
+  width: fit-content;
+  min-width: min(100%, 15ch);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Custom Data Residency dropdown (same width as trigger, aligned, rounded panel) */
+.residency-dd {
+  position: relative;
+  width: fit-content;
+  min-width: 10.5rem;
+  max-width: 100%;
+  z-index: 1;
+}
+
+.residency-dd--open {
+  z-index: 100;
+}
+
+.residency-dd__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px 8px 12px;
+  margin: 0;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+  color: $color-primary;
+  background: $color-white;
+  border: 1px solid $color-border;
+  border-radius: 8px;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover {
+    border-color: rgba($color-primary, 0.25);
+  }
+
+  &:focus {
+    outline: none;
+    border-color: $color-primary;
+    box-shadow: 0 0 0 3px rgba($color-primary, 0.12);
+  }
+
+  &:disabled {
+    opacity: 0.7;
+    cursor: wait;
+  }
+}
+
+.residency-dd--open .residency-dd__trigger {
+  border-color: $color-primary;
+  box-shadow: 0 0 0 3px rgba($color-primary, 0.1);
+}
+
+.residency-dd__value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.residency-dd__chevron {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: $color-primary;
+  margin-right: 4px;
+}
+
+.residency-dd__list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: $color-white;
+  border: 1px solid $color-border;
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
+}
+
+.residency-dd__option {
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 1.35;
+  color: $color-primary;
+  cursor: pointer;
+  transition: background 0.1s ease;
+
+  &:hover {
+    background: $color-secondary-dark;
+  }
+
+  &--selected {
+    background: $color-primary;
+    color: $color-white;
+    font-weight: 500;
+
+    &:hover {
+      background: #1a1a1a;
+    }
+  }
 }
 
 .form-label {
@@ -231,6 +479,43 @@ select.form-input,
   tbody tr:hover {
     background: rgba(0, 0, 0, 0.02);
   }
+
+  .users-table__actions-col {
+    width: 7rem;
+    text-align: center;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  th.users-table__actions-col {
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  /* Match Client Directory “Actions” / inline Edit: bold text, no button chrome */
+  .users-table__edit {
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.35;
+    color: $color-primary;
+    cursor: pointer;
+  }
+
+  .users-table__edit:hover {
+    color: $color-muted;
+    text-decoration: underline;
+  }
+
+  .users-table__edit:focus-visible {
+    outline: 2px solid $color-primary;
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
 }
 
 .users-section-header {
@@ -270,27 +555,42 @@ select.form-input,
 
 .modal-header {
   display: flex;
+  flex-flow: row nowrap;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 24px;
+  gap: 12px;
+  padding: 14px 28px 6px;
   border-bottom: 1px solid $color-border;
+  box-sizing: border-box;
 }
 
 .modal-title {
-  margin: 0;
+  margin: 0 !important;
+  padding: 0;
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 18px;
   font-weight: 600;
+  line-height: 1.3;
   color: $color-primary;
 }
 
 .modal-close {
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 0;
   background: none;
   border: none;
-  font-size: 24px;
+  font-size: 22px;
   line-height: 1;
   color: $color-muted;
   cursor: pointer;
-  padding: 0 4px;
   transition: color 0.15s ease;
 
   &:hover {
@@ -299,17 +599,17 @@ select.form-input,
 }
 
 .modal-body {
-  padding: 24px;
+  padding: 16px 28px 24px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
 }
 
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  padding: 16px 24px;
+  padding: 16px 28px;
   border-top: 1px solid $color-border;
   background: $color-secondary-dark;
 }
@@ -323,17 +623,48 @@ select.form-input,
 .pricing-form {
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 20px;
 }
 
-.billing-tier-row {
+.billing-tier-block {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 24px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
 
-  .form-group {
-    min-width: 180px;
+.form-group--billing-tier {
+  align-items: flex-start;
+  width: 100%;
+
+  .residency-dd {
+    width: 100%;
+    max-width: min(100%, 280px);
+  }
+}
+
+.pricing-allow-negative {
+  margin: 0;
+}
+
+.pricing-management {
+  .residency-dd__list--scrollable {
+    max-height: min(280px, 50vh);
+    overflow-y: auto;
+  }
+
+  .pricing-rule-row {
+    position: relative;
+    z-index: 1;
+
+    &:has(.residency-dd--open) {
+      z-index: 20;
+    }
+
+    .pricing-rule-dd.residency-dd {
+      width: 100%;
+      min-width: 0;
+    }
   }
 }
 
@@ -354,33 +685,44 @@ select.form-input,
 
 // ----- Custom pricing block -----
 .custom-pricing-block {
-  margin-top: 8px;
+  margin-top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .block-title {
+  margin: 0 !important;
+  padding: 0;
   font-size: 16px;
   font-weight: 600;
   color: $color-primary;
-  margin: 0 0 6px 0;
 }
 
-.custom-pricing-block .field-help {
-  margin-bottom: 16px;
+.custom-pricing-block > .field-help {
+  margin: 0;
 }
 
 .pricing-rules-wrap {
-  margin-bottom: 12px;
+  margin: 0;
   border: 1px solid $color-medium-gray;
   border-radius: 8px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pricing-rule-header,
+.pricing-rule-row {
+  min-width: 720px;
 }
 
 .pricing-rule-header {
   display: grid;
-  grid-template-columns: 1fr 1fr minmax(72px, 0.8fr) auto minmax(72px, 0.7fr) minmax(64px, 0.6fr) 80px;
-  gap: 8px;
+  grid-template-columns: 1.1fr 1.1fr minmax(88px, 0.75fr) minmax(100px, 0.65fr) minmax(88px, 0.65fr) minmax(80px, 0.55fr) 88px;
+  gap: 10px;
   align-items: center;
-  padding: 6px 10px;
+  padding: 10px 14px;
   background: $color-secondary-dark;
   font-size: 11px;
   font-weight: 700;
@@ -391,26 +733,47 @@ select.form-input,
 
 .pricing-rule-row {
   display: grid;
-  grid-template-columns: 1fr 1fr minmax(72px, 0.8fr) auto minmax(72px, 0.7fr) minmax(64px, 0.6fr) 80px;
-  gap: 8px;
-  align-items: end;
-  padding: 8px 10px;
+  grid-template-columns: 1.1fr 1.1fr minmax(88px, 0.75fr) minmax(100px, 0.65fr) minmax(88px, 0.65fr) minmax(80px, 0.55fr) 88px;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
   background: $color-white;
   border-top: 1px solid $color-medium-gray;
 
-  select,
-  input {
-    padding: 6px 10px;
-    font-size: 13px;
-    border: 1px solid $color-border;
-    border-radius: 6px;
+  .pricing-rule__control {
+    width: 100%;
     min-width: 0;
+    min-height: 38px;
+    box-sizing: border-box;
   }
 
   .pricing-rule-placeholder {
-    color: $color-medium-gray;
-    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    color: $color-muted;
+    font-size: 14px;
+    user-select: none;
   }
+
+  .button-small {
+    justify-self: end;
+    align-self: center;
+  }
+}
+
+.custom-pricing-block > .button-secondary {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.pricing-form > .message {
+  margin: 0;
+}
+
+.pricing-form > .form-actions {
+  margin-top: 4px;
 }
 
 // ----- Responsive -----
@@ -422,31 +785,16 @@ select.form-input,
   .card {
     padding: 20px 24px;
   }
-
-  .pricing-rule-header,
-  .pricing-rule-row {
-    grid-template-columns: 1fr 1fr 1fr 72px;
-    gap: 8px;
-
-    .form-input:nth-child(5),
-    .form-input:nth-child(6) {
-      grid-column: 1 / span 2;
-    }
-
-    .button-small {
-      grid-column: 3 / span 2;
-    }
-  }
-
-  .pricing-rule-header span:nth-child(5),
-  .pricing-rule-header span:nth-child(6) {
-    grid-column: 1 / span 2;
-  }
 }
 
 @media (max-width: 600px) {
   .page-title {
     font-size: 24px;
+  }
+
+  .residency-dd {
+    width: 100%;
+    min-width: 0;
   }
 
   .form-actions {
@@ -457,9 +805,17 @@ select.form-input,
     }
   }
 
-  .billing-tier-row {
-    flex-direction: column;
+  .billing-tier-block {
     align-items: stretch;
+
+    .form-group--billing-tier .residency-dd {
+      max-width: none;
+    }
+  }
+
+  .pricing-rule-header,
+  .pricing-rule-row {
+    min-width: 0;
   }
 
   .pricing-rule-header {
@@ -467,20 +823,18 @@ select.form-input,
   }
 
   .pricing-rule-row {
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 14px 12px;
 
-    .form-input,
-    select.form-input {
-      min-width: 0;
+    .pricing-rule__control,
+    .pricing-rule-placeholder {
+      width: 100%;
     }
 
-    .form-input:nth-child(1) { grid-column: 1; }
-    .form-input:nth-child(2) { grid-column: 2; }
-    .form-input:nth-child(3) { grid-column: 1; }
-    .form-input:nth-child(4) { grid-column: 2; }
-    .form-input:nth-child(5),
-    .form-input:nth-child(6) { grid-column: 1 / -1; }
-    .button-small { grid-column: 1 / -1; }
+    .button-small {
+      justify-self: stretch;
+      width: 100%;
+    }
   }
 }

@@ -1,11 +1,22 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Component, OnInit } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  HostListener,
+  OnInit,
+  ViewChild
+} from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
 import { ClientRow } from '../clients/clients.component';
 import { environment } from '../../config/environment';
+import {
+  ClientSettingsMetaService,
+  DEFAULT_DATA_RESIDENCY_OPTIONS,
+  DataResidencyOption
+} from '../services/client-settings-meta.service';
 
 @Component({
   selector: 'app-client-form',
@@ -14,6 +25,15 @@ import { environment } from '../../config/environment';
   styleUrl: './client-form.component.scss'
 })
 export class ClientFormComponent implements OnInit {
+  @ViewChild('residencyDropdownRoot')
+  residencyDropdownRoot?: ElementRef<HTMLElement>;
+
+  @ViewChild('editUserRoleDropdownRoot')
+  editUserRoleDropdownRoot?: ElementRef<HTMLElement>;
+
+  /** Custom menu: native select dropdown is OS-drawn (width/corners misalign). */
+  dataResidencyMenuOpen = false;
+
   isEditMode = false;
   clientCode = '';
   errorMessage = '';
@@ -29,12 +49,31 @@ export class ClientFormComponent implements OnInit {
   isLoadingUsers = false;
   showAddUserModal = false;
 
+  showEditUserModal = false;
+  editUserEmail = '';
+  editUserRole = '';
+  editUserRoleOptions: Array<{ value: string; label: string }> = [];
+  editUserNewPassword = '';
+  editUserErrorMessage = '';
+  isUpdatingUser = false;
+  editUserRoleMenuOpen = false;
+
+  /** Roles offered when editing; current role is always included if not listed. */
+  readonly EDIT_USER_ROLE_OPTIONS = [
+    { value: 'member', label: 'Member' },
+    { value: 'admin', label: 'Admin' }
+  ];
+
   // Pricing: saved via PUT /admin/clients/:clientCode/billing (tier, allowNegativeBalance, customPricing)
   pricingErrorMessage = '';
   pricingSuccessMessage = '';
   isSavingPricing = false;
   billingTier = 'basic';
   allowNegativeBalance = false;
+  billingTierMenuOpen = false;
+  /** Which pricing rule custom dropdown is open (feature / unit / rounding). */
+  pricingDd: { row: number; field: 'feature' | 'unit' | 'rounding' } | null =
+    null;
   /** Flat list of custom pricing rules; each row becomes customPricing[featureCode][unitType] */
   pricingRules: Array<{
     featureCode: string;
@@ -55,7 +94,8 @@ export class ClientFormComponent implements OnInit {
     { value: 'chat', label: 'Chat' },
     { value: 'voice', label: 'Voice' },
     { value: 'onboarding', label: 'Onboarding' },
-    { value: 'audit', label: 'Audit' }
+    { value: 'audit', label: 'Audit' },
+    { value: 'agent_builder', label: 'Agent Builder' }
   ];
   readonly UNIT_TYPES = [
     { value: 'message', label: 'Message' },
@@ -90,26 +130,223 @@ export class ClientFormComponent implements OnInit {
     { label: 'Audit Agent', value: 'audit' }
   ];
 
+  dataResidencyOptions: DataResidencyOption[] = [
+    ...DEFAULT_DATA_RESIDENCY_OPTIONS
+  ];
+  isLoadingDataResidencyOptions = false;
+
+  /** Suggested values for the voice concurrency number field (datalist). */
+  readonly voiceConcurrencyOptions = [1, 2, 5, 10, 25, 50, 100] as const;
+
   clientForm: FormGroup;
 
+  /**
+   * Base `…/admin`. Client endpoints:
+   * POST `…/clients`, PUT `…/clients/{clientCode}`; single-client GET uses `…/clients/:code` when needed.
+   */
   private readonly apiBase = environment.apiUrl.replace(/\/$/, '');
 
   constructor(
     private fb: FormBuilder,
     private route: ActivatedRoute,
     private router: Router,
-    private http: HttpClient
+    private http: HttpClient,
+    private clientSettingsMeta: ClientSettingsMetaService
   ) {
     this.clientForm = this.fb.group({
       clientName: ['', [Validators.required, Validators.minLength(3)]],
+      dataResidency: this.fb.nonNullable.control<string>('global'),
+      voiceConcurrency: this.fb.nonNullable.control<number>(1, [
+        Validators.required,
+        Validators.min(1)
+      ]),
       enabledAgents: this.fb.nonNullable.control<string[]>([])
     });
+  }
+
+  get dataResidencyDisplayLabel(): string {
+    const v = this.clientForm?.get('dataResidency')?.value as string | undefined;
+    return (
+      this.dataResidencyOptions.find((o) => o.value === v)?.label ?? v ?? ''
+    );
+  }
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(ev: MouseEvent): void {
+    const t = ev.target as Node;
+    if (this.dataResidencyMenuOpen) {
+      if (!this.residencyDropdownRoot?.nativeElement?.contains(t)) {
+        this.dataResidencyMenuOpen = false;
+      }
+    }
+    if (this.editUserRoleMenuOpen) {
+      if (!this.editUserRoleDropdownRoot?.nativeElement?.contains(t)) {
+        this.editUserRoleMenuOpen = false;
+      }
+    }
+    const el = ev.target as HTMLElement;
+    if (this.billingTierMenuOpen && !el.closest('.billing-tier-dd')) {
+      this.billingTierMenuOpen = false;
+    }
+    if (this.pricingDd !== null && !el.closest('.pricing-rule-dd')) {
+      this.pricingDd = null;
+    }
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    this.dataResidencyMenuOpen = false;
+    this.editUserRoleMenuOpen = false;
+    this.billingTierMenuOpen = false;
+    this.pricingDd = null;
+  }
+
+  toggleDataResidencyMenu(ev: MouseEvent): void {
+    ev.stopPropagation();
+    if (this.isLoadingDataResidencyOptions) return;
+    this.dataResidencyMenuOpen = !this.dataResidencyMenuOpen;
+  }
+
+  selectDataResidency(value: string): void {
+    this.clientForm.patchValue({ dataResidency: value });
+    this.dataResidencyMenuOpen = false;
+  }
+
+  isDataResidencySelected(value: string): boolean {
+    return this.clientForm.get('dataResidency')?.value === value;
+  }
+
+  get editUserRoleDisplayLabel(): string {
+    const v = this.editUserRole ?? '';
+    const opt = this.editUserRoleOptions.find(
+      (o) => o.value.toLowerCase() === v.trim().toLowerCase()
+    );
+    return opt?.label ?? v;
+  }
+
+  toggleEditUserRoleMenu(ev: MouseEvent): void {
+    ev.stopPropagation();
+    this.editUserRoleMenuOpen = !this.editUserRoleMenuOpen;
+  }
+
+  selectEditUserRole(value: string): void {
+    this.editUserRole = value;
+    this.editUserRoleMenuOpen = false;
+  }
+
+  isEditUserRoleSelected(value: string): boolean {
+    return (
+      (this.editUserRole ?? '').trim().toLowerCase() ===
+      value.trim().toLowerCase()
+    );
+  }
+
+  get billingTierDisplayLabel(): string {
+    return (
+      this.BILLING_TIERS.find((t) => t.value === this.billingTier)?.label ??
+      this.billingTier
+    );
+  }
+
+  toggleBillingTierMenu(ev: MouseEvent): void {
+    ev.stopPropagation();
+    this.pricingDd = null;
+    this.billingTierMenuOpen = !this.billingTierMenuOpen;
+  }
+
+  selectBillingTier(value: string): void {
+    this.billingTier = value;
+    this.billingTierMenuOpen = false;
+  }
+
+  togglePricingDd(
+    ev: MouseEvent,
+    row: number,
+    field: 'feature' | 'unit' | 'rounding'
+  ): void {
+    ev.stopPropagation();
+    this.billingTierMenuOpen = false;
+    if (
+      this.pricingDd?.row === row &&
+      this.pricingDd?.field === field
+    ) {
+      this.pricingDd = null;
+    } else {
+      this.pricingDd = { row, field };
+    }
+  }
+
+  isPricingDdOpen(
+    row: number,
+    field: 'feature' | 'unit' | 'rounding'
+  ): boolean {
+    return (
+      this.pricingDd?.row === row && this.pricingDd?.field === field
+    );
+  }
+
+  pricingRuleFieldLabelForRule(
+    rule: {
+      featureCode: string;
+      unitType: string;
+      rounding: string;
+    },
+    field: 'feature' | 'unit' | 'rounding'
+  ): string {
+    if (field === 'feature') {
+      return (
+        this.FEATURE_CODES.find((o) => o.value === rule.featureCode)
+          ?.label ?? rule.featureCode
+      );
+    }
+    if (field === 'unit') {
+      return (
+        this.UNIT_TYPES.find((o) => o.value === rule.unitType)?.label ??
+        rule.unitType
+      );
+    }
+    return (
+      this.ROUNDING_TYPES.find((o) => o.value === rule.rounding)?.label ??
+      rule.rounding
+    );
+  }
+
+  selectPricingRuleDropdown(
+    row: number,
+    field: 'feature' | 'unit' | 'rounding',
+    value: string
+  ): void {
+    const rule = this.pricingRules[row];
+    if (!rule) return;
+    if (field === 'feature') rule.featureCode = value;
+    else if (field === 'unit') rule.unitType = value;
+    else rule.rounding = value;
+    this.pricingDd = null;
+  }
+
+  isAgentEnabled(agentValue: string): boolean {
+    const list = this.clientForm.get('enabledAgents')?.value as string[] | undefined;
+    return (list ?? []).includes(agentValue);
+  }
+
+  toggleEnabledAgent(agentValue: string, ev: Event): void {
+    const checked = (ev.target as HTMLInputElement).checked;
+    const ctrl = this.clientForm.get('enabledAgents');
+    const current = [...((ctrl?.value as string[] | undefined) ?? [])];
+    if (checked) {
+      if (!current.includes(agentValue)) current.push(agentValue);
+    } else {
+      const i = current.indexOf(agentValue);
+      if (i >= 0) current.splice(i, 1);
+    }
+    ctrl?.patchValue(current);
   }
 
   ngOnInit(): void {
     const code = this.route.snapshot.paramMap.get('code');
 
     if (!code) {
+      void this.loadDataResidencyOptions();
       return;
     }
 
@@ -119,13 +356,101 @@ export class ClientFormComponent implements OnInit {
 
     const client = history.state?.client as ClientRow | undefined;
     if (client) {
-      this.clientForm.patchValue({
-        clientName: client.clientName,
-        enabledAgents: client.enabledAgents || []
-      });
-      this.applyBillingFromClient(client);
+      void this.bootstrapEditFormWithClient(client);
     } else {
       void this.loadClientByCode();
+    }
+  }
+
+  private pickResidencyAndVoiceFromUnknown(
+    src: Record<string, unknown>
+  ): Partial<{ dataResidency: string; voiceConcurrency: number }> {
+    const out: Partial<{ dataResidency: string; voiceConcurrency: number }> =
+      {};
+    const dr = src['dataResidency'] ?? src['data_residency'];
+    if (typeof dr === 'string' && dr.trim()) {
+      out.dataResidency = dr.trim();
+    }
+    const vc = src['voiceConcurrency'] ?? src['voice_concurrency'];
+    if (vc !== undefined && vc !== null && vc !== '') {
+      const n = typeof vc === 'number' ? vc : Number(vc);
+      if (Number.isFinite(n) && Number.isInteger(n) && n >= 1) {
+        out.voiceConcurrency = n;
+      }
+    }
+    return out;
+  }
+
+  private async hydrateResidencyOptionsOnly(): Promise<void> {
+    this.isLoadingDataResidencyOptions = true;
+    try {
+      const meta = await this.clientSettingsMeta.fetchMeta();
+      this.dataResidencyOptions =
+        meta.dataResidencyOptions.length > 0
+          ? meta.dataResidencyOptions
+          : [...DEFAULT_DATA_RESIDENCY_OPTIONS];
+    } finally {
+      this.isLoadingDataResidencyOptions = false;
+    }
+  }
+
+  private syncDataResidencyWithOptions(): void {
+    const current = this.clientForm.get('dataResidency')?.value as string;
+    if (!this.dataResidencyOptions.some((o) => o.value === current)) {
+      const preferred =
+        this.dataResidencyOptions.find(
+          (o) => o.value.toLowerCase() === 'global'
+        )?.value ??
+        this.dataResidencyOptions[0]?.value ??
+        'global';
+      this.clientForm.patchValue({ dataResidency: preferred });
+    }
+  }
+
+  private async bootstrapEditFormWithClient(client: ClientRow): Promise<void> {
+    await this.hydrateResidencyOptionsOnly();
+    this.clientForm.patchValue({
+      clientName: client.clientName,
+      enabledAgents: client.enabledAgents || [],
+      ...this.pickResidencyAndVoiceFromUnknown(
+        client as unknown as Record<string, unknown>
+      )
+    });
+    this.applyBillingFromClient(client);
+    this.syncDataResidencyWithOptions();
+  }
+
+  private async loadDataResidencyOptions(): Promise<void> {
+    this.isLoadingDataResidencyOptions = true;
+    try {
+      const meta = await this.clientSettingsMeta.fetchMeta();
+      this.dataResidencyOptions =
+        meta.dataResidencyOptions.length > 0
+          ? meta.dataResidencyOptions
+          : [...DEFAULT_DATA_RESIDENCY_OPTIONS];
+
+      const globalOption = this.dataResidencyOptions.find(
+        (o) => o.value.toLowerCase() === 'global'
+      );
+      if (globalOption) {
+        this.clientForm.patchValue({ dataResidency: globalOption.value });
+        return;
+      }
+
+      const preferred =
+        meta.defaultDataResidency &&
+        this.dataResidencyOptions.some(
+          (o) => o.value === meta.defaultDataResidency
+        )
+          ? meta.defaultDataResidency
+          : (this.dataResidencyOptions[0]?.value ?? 'global');
+
+      const current = this.clientForm.get('dataResidency')?.value as string;
+      if (!this.dataResidencyOptions.some((o) => o.value === current)) {
+        this.clientForm.patchValue({ dataResidency: preferred });
+      }
+    } finally {
+      this.isLoadingDataResidencyOptions = false;
     }
   }
 
@@ -135,6 +460,7 @@ export class ClientFormComponent implements OnInit {
       this.errorMessage = 'Session expired. Please log in again.';
       return;
     }
+    await this.hydrateResidencyOptionsOnly();
     try {
       const res = await firstValueFrom(
         this.http.get<any>(`${this.apiBase}/clients/${this.clientCode}`, {
@@ -146,6 +472,7 @@ export class ClientFormComponent implements OnInit {
         this.errorMessage = 'Client not found.';
         return;
       }
+      const rawObj = raw as Record<string, unknown>;
       const client: ClientRow = {
         clientName: raw.clientName ?? raw.name ?? 'Unnamed Client',
         clientCode: raw.clientCode ?? raw.cod ?? this.clientCode,
@@ -157,8 +484,10 @@ export class ClientFormComponent implements OnInit {
       };
       this.clientForm.patchValue({
         clientName: client.clientName,
-        enabledAgents: client.enabledAgents || []
+        enabledAgents: client.enabledAgents || [],
+        ...this.pickResidencyAndVoiceFromUnknown(rawObj)
       });
+      this.syncDataResidencyWithOptions();
       this.applyBillingFromClient(client);
     } catch {
       this.errorMessage = 'Could not load client. You can still update by filling the form.';
@@ -217,6 +546,17 @@ export class ClientFormComponent implements OnInit {
       return;
     }
 
+    const voiceConcurrency = Number(formValue.voiceConcurrency);
+    if (
+      !Number.isFinite(voiceConcurrency) ||
+      !Number.isInteger(voiceConcurrency) ||
+      voiceConcurrency < 1
+    ) {
+      this.errorMessage = 'Voice concurrency must be a positive whole number.';
+      this.isSubmitting = false;
+      return;
+    }
+
     try {
       if (this.isEditMode) {
         await firstValueFrom(
@@ -224,7 +564,9 @@ export class ClientFormComponent implements OnInit {
             `${this.apiBase}/clients/${this.clientCode}`,
             {
               clientName: formValue.clientName,
-              enabledAgents: formValue.enabledAgents
+              enabledAgents: formValue.enabledAgents,
+              dataResidency: formValue.dataResidency,
+              voiceConcurrency
             },
             {
               headers: new HttpHeaders({
@@ -240,7 +582,9 @@ export class ClientFormComponent implements OnInit {
           this.http.post(
             `${this.apiBase}/clients`,
             {
-              clientName: formValue.clientName
+              clientName: formValue.clientName,
+              dataResidency: formValue.dataResidency,
+              voiceConcurrency
             },
             {
               headers: new HttpHeaders({
@@ -330,6 +674,83 @@ export class ClientFormComponent implements OnInit {
     this.userSuccessMessage = '';
   }
 
+  openEditUserModal(u: { email: string; role: string }): void {
+    this.editUserErrorMessage = '';
+    this.editUserEmail = u.email;
+    const role = (u.role ?? '').trim() || 'member';
+    const base = [...this.EDIT_USER_ROLE_OPTIONS];
+    const hasKnown = base.some((o) => o.value.toLowerCase() === role.toLowerCase());
+    this.editUserRoleOptions = hasKnown
+      ? base
+      : [{ value: role, label: role }, ...base];
+    this.editUserRole = role;
+    this.editUserNewPassword = '';
+    this.editUserRoleMenuOpen = false;
+    this.showEditUserModal = true;
+  }
+
+  closeEditUserModal(): void {
+    this.showEditUserModal = false;
+    this.editUserRoleMenuOpen = false;
+    this.editUserEmail = '';
+    this.editUserRole = '';
+    this.editUserRoleOptions = [];
+    this.editUserNewPassword = '';
+    this.editUserErrorMessage = '';
+  }
+
+  async updateUser(): Promise<void> {
+    if (!this.editUserEmail.trim()) {
+      this.editUserErrorMessage = 'User email is missing.';
+      return;
+    }
+    if (!this.editUserRole.trim()) {
+      this.editUserErrorMessage = 'Role is required.';
+      return;
+    }
+    const pwd = this.editUserNewPassword.trim();
+    if (pwd && pwd.length < 6) {
+      this.editUserErrorMessage = 'New password must be at least 6 characters, or leave blank to keep the current password.';
+      return;
+    }
+
+    this.isUpdatingUser = true;
+    this.editUserErrorMessage = '';
+
+    try {
+      const accessToken = localStorage.getItem('accessToken');
+      if (!accessToken) {
+        this.editUserErrorMessage = 'Session expired. Please log in again.';
+        return;
+      }
+
+      const body: { email: string; clientCode: string; role: string; password?: string } = {
+        email: this.editUserEmail.trim(),
+        clientCode: this.clientCode,
+        role: this.editUserRole.trim()
+      };
+      if (pwd) body.password = pwd;
+
+      await firstValueFrom(
+        this.http.patch(`${this.apiBase}/users`, body, {
+          headers: new HttpHeaders({
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          })
+        })
+      );
+
+      this.closeEditUserModal();
+      await this.loadClientUsers();
+    } catch (error) {
+      console.error(error);
+      this.editUserErrorMessage =
+        (error as any)?.error?.message ?? 'Unable to update user right now.';
+    } finally {
+      this.isUpdatingUser = false;
+    }
+  }
+
   async loadClientUsers(): Promise<void> {
     const accessToken = localStorage.getItem('accessToken');
     if (!accessToken || !this.clientCode) return;
@@ -350,6 +771,7 @@ export class ClientFormComponent implements OnInit {
   }
 
   addPricingRule(): void {
+    this.pricingDd = null;
     this.pricingRules.push({
       featureCode: 'chat',
       unitType: 'message',
@@ -360,6 +782,11 @@ export class ClientFormComponent implements OnInit {
 
   removePricingRule(index: number): void {
     this.pricingRules.splice(index, 1);
+    if (this.pricingDd?.row === index) {
+      this.pricingDd = null;
+    } else if (this.pricingDd !== null && this.pricingDd.row > index) {
+      this.pricingDd = { ...this.pricingDd, row: this.pricingDd.row - 1 };
+    }
   }
 
   async savePricing(): Promise<void> {

@@ -1,4 +1,9 @@
-import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
+import {
+  HttpClient,
+  HttpErrorResponse,
+  HttpHeaders,
+  HttpParams
+} from '@angular/common/http';
 import {
   ChangeDetectorRef,
   Component,
@@ -24,6 +29,9 @@ export interface ClientRow {
   owner: string;
   createdOn: string;
   billing?: BillingInfo;
+  /** Carried from API for PUT /clients/:code (e.g. unarchive). */
+  dataResidency?: string;
+  voiceConcurrency?: number;
 }
 
 @Component({
@@ -45,7 +53,10 @@ export class ClientsComponent implements OnInit, OnDestroy {
   pageSize = 10;
   readonly pageSizeOptions: number[] = [5, 10, 25, 50];
   private readonly apiBase = environment.apiUrl.replace(/\/$/, '');
-  /** GET /clients often omits archived rows; we keep them here so the Archived tab still works. */
+  /**
+   * Client list: GET {apiBase}/clients?includeArchived=true
+   * (see also GET …/clients and GET …/clients?archivedOnly=true).
+   */
   private readonly locallyArchivedClients = new Map<string, ClientRow>();
   private static readonly ARCHIVED_STORAGE_KEY = 'kartaAdminArchivedClientRows';
   /** Brief “Copied” hint next to the client code that was copied */
@@ -244,8 +255,11 @@ export class ClientsComponent implements OnInit, OnDestroy {
       this.actionMessage = this.loadError;
       return;
     }
-
-    const headers = new HttpHeaders({ Authorization: `Bearer ${accessToken}` });
+    
+    const headers = new HttpHeaders({
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    });
     const url = `${this.apiBase}/clients/${encodeURIComponent(client.clientCode)}`;
 
     try {
@@ -264,18 +278,26 @@ export class ClientsComponent implements OnInit, OnDestroy {
     }
   }
 
-  /**
-   * Backend restore/update requires at least one of: clientName, enabledAgents, voiceConcurrency.
-   */
+  /** PUT /clients/:clientCode — align with client-form update body + clear archive. */
   private restoreClientPayload(client: ClientRow): Record<string, unknown> {
     const agents =
       client.enabledAgents?.length > 0
         ? [...client.enabledAgents]
         : ['chat'];
+    const voiceRaw = client.voiceConcurrency;
+    const voiceConcurrency =
+      typeof voiceRaw === 'number' &&
+      Number.isInteger(voiceRaw) &&
+      voiceRaw >= 1
+        ? voiceRaw
+        : 1;
+    const dataResidency = (client.dataResidency ?? 'global').trim() || 'global';
     return {
       archived: false,
       clientName: client.clientName,
-      enabledAgents: agents
+      enabledAgents: agents,
+      dataResidency,
+      voiceConcurrency
     };
   }
 
@@ -284,73 +306,13 @@ export class ClientsComponent implements OnInit, OnDestroy {
     headers: HttpHeaders,
     client: ClientRow
   ): Promise<{ message?: string } | null> {
-    type Msg = { message?: string } | null;
-    const p = this.restoreClientPayload(client);
-    const code = client.clientCode;
-
-    const patch = (body: Record<string, unknown>): Promise<Msg> =>
-      firstValueFrom(
-        this.http.patch<Msg>(url, body, { headers, observe: 'response' })
-      ).then((r) => r.body);
-
-    const put = (body: Record<string, unknown>): Promise<Msg> =>
-      firstValueFrom(
-        this.http.put<Msg>(url, body, { headers, observe: 'response' })
-      ).then((r) => r.body);
-
-    const postSuffix = (path: string, body: unknown): Promise<Msg> =>
-      firstValueFrom(
-        this.http.post<Msg>(`${url}${path}`, body, {
-          headers,
-          observe: 'response'
-        })
-      ).then((r) => r.body);
-
-    const postCollection = (
-      path: string,
-      body: Record<string, unknown>
-    ): Promise<Msg> =>
-      firstValueFrom(
-        this.http.post<Msg>(`${this.apiBase}/clients${path}`, body, {
-          headers,
-          observe: 'response'
-        })
-      ).then((r) => r.body);
-
-    /* Archived rows often 404 on PATCH /clients/:code — restore is usually a collection POST. */
-    const bodyWithCode: Record<string, unknown> = {
-      clientCode: code,
-      ...p,
-      status: 'Active'
-    };
-
-    const attempts: Array<() => Promise<Msg>> = [
-      () => postCollection('/reactivate', bodyWithCode),
-      () => postCollection('/unarchive', bodyWithCode),
-      () => postCollection('/restore', bodyWithCode),
-      () => postSuffix('/unarchive', bodyWithCode),
-      () => postSuffix('/restore', bodyWithCode),
-      () => patch({ ...p, status: 'Active' }),
-      () => patch({ ...p, status: 'active' }),
-      () => patch(p),
-      () => put(bodyWithCode),
-      () => put(p)
-    ];
-
-    let lastErr: unknown;
-    for (const run of attempts) {
-      try {
-        return await run();
-      } catch (e) {
-        lastErr = e;
-        const st = (e as HttpErrorResponse).status;
-        if (st === 404 || st === 405 || st === 501) {
-          continue;
-        }
-        throw e;
-      }
-    }
-    throw lastErr;
+    const res = await firstValueFrom(
+      this.http.put<{ message?: string }>(url, this.restoreClientPayload(client), {
+        headers,
+        observe: 'response'
+      })
+    );
+    return res.body;
   }
 
   private describeUnarchiveError(error: unknown): string {
@@ -467,11 +429,13 @@ export class ClientsComponent implements OnInit, OnDestroy {
     this.loadError = '';
 
     try {
+      const listParams = new HttpParams().set('includeArchived', 'true');
       const response = await firstValueFrom(
         this.http.get<any>(`${this.apiBase}/clients`, {
           headers: new HttpHeaders({
             Authorization: `Bearer ${accessToken}`
-          })
+          }),
+          params: listParams
         })
       );
 
@@ -479,7 +443,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
       this.clients = this.mergeApiRowsWithLocallyArchived(rows);
       this.clampPageIndex();
       this.actionMessage = this.clients.length
-        ? 'Clients loaded successfully from GET /admin/clients.'
+        ? 'Clients loaded successfully.'
         : 'No clients found yet. Add Client flow will be the next page we create.';
     } catch (error) {
       console.error('Failed to load clients', error);
@@ -601,8 +565,24 @@ export class ClientsComponent implements OnInit, OnDestroy {
       status: this.normalizeStatus(client),
       owner: client?.owner || client?.createdBy || client?.email || 'Admin',
       createdOn: this.formatDate(client?.createdAt || client?.updatedAt),
-      billing: client?.billing ?? client?.bi
+      billing: client?.billing ?? client?.bi,
+      dataResidency: this.extractDataResidency(client),
+      voiceConcurrency: this.extractVoiceConcurrency(client)
     }));
+  }
+
+  private extractDataResidency(client: any): string | undefined {
+    const dr = client?.dataResidency ?? client?.data_residency;
+    return typeof dr === 'string' && dr.trim() ? dr.trim() : undefined;
+  }
+
+  private extractVoiceConcurrency(client: any): number | undefined {
+    const v = client?.voiceConcurrency ?? client?.voice_concurrency;
+    const n = Number(v);
+    if (Number.isFinite(n) && Number.isInteger(n) && n >= 1) {
+      return n;
+    }
+    return undefined;
   }
 
   private normalizeStatus(client: any): 'Active' | 'Draft' | 'Archived' {
@@ -611,15 +591,20 @@ export class ClientsComponent implements OnInit, OnDestroy {
       .toString()
       .toLowerCase();
 
-    if (
+    const explicitlyUnarchived =
+      client?.archived === false || client?.isArchived === false;
+
+    const isArchived =
       rawStatus === 'archived' ||
       rawStatus === 'inactive' ||
       archiveStatus === 'archived' ||
       client?.archived === true ||
       client?.isArchived === true ||
       client?.deletedAt != null ||
-      client?.archivedAt != null
-    ) {
+      /* Keep historical archivedAt only when API does not say “not archived”. */
+      (client?.archivedAt != null && !explicitlyUnarchived);
+
+    if (isArchived) {
       return 'Archived';
     }
 
