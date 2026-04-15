@@ -127,7 +127,7 @@
   
     &:focus-visible {
       outline: 2px solid $color-primary;
-      outline-offset: 3px;
+      outline-offset: 2px;
     }
   }
   
@@ -138,8 +138,9 @@
   button.directory-slide-toggle .directory-slide-toggle__track {
     display: block !important;
     position: relative !important;
-    width: 86px;
-    height: 42px;
+    /* ~60% of original 86×42 — between the tiny variant and full-size */
+    width: 52px;
+    height: 25px;
     line-height: 0;
     border-radius: 999px;
     overflow: hidden;
@@ -150,9 +151,9 @@
     border: 1px solid #0f172a !important;
   
     box-shadow:
-      0 2px 6px rgba(15, 23, 42, 0.35),
+      0 1px 4px rgba(15, 23, 42, 0.35),
       inset 0 1px 0 rgba(255, 255, 255, 0.12),
-      inset 0 -2px 4px rgba(0, 0, 0, 0.35);
+      inset 0 -1px 2px rgba(0, 0, 0, 0.35);
   }
   
   /* Edit state track */
@@ -182,7 +183,7 @@
     z-index: 1;
     box-sizing: border-box;
 
-    font-size: 11px !important;   /* ✅ slightly bigger */
+    font-size: 7px !important;
     font-weight: 600 !important;
     letter-spacing: 0.02em;
 
@@ -194,15 +195,15 @@
   }
 
   button.directory-slide-toggle .directory-slide-toggle__label--view {
-    right: 4px;
-    padding: 4px 10px 4px 14px;
+    right: 2px;
+    padding: 2px 6px 2px 8px;
     text-align: right;
     white-space: nowrap;
   }
 
   button.directory-slide-toggle .directory-slide-toggle__label--edit {
-    left: 4px;
-    padding: 4px 14px 4px 10px;
+    left: 2px;
+    padding: 2px 8px 2px 6px;
     white-space: nowrap;
   }
   
@@ -233,14 +234,15 @@
      Thumb (Main Fix)
      ========================= */
   
-  /* Thumb flush to each end (2px inset) so no dead band inside the capsule */
+  /* Thumb flush to each end (2px inset); vertical center in track padding box (track has 1px border) */
   button.directory-slide-toggle .directory-slide-toggle__thumb {
     position: absolute !important;
-    top: 3px;
+    top: 50%;
     left: 2px;
+    transform: translateY(-50%);
 
-    width: 36px;
-    height: 36px;
+    width: 22px;
+    height: 22px;
   
     border-radius: 50%;
     box-sizing: border-box;
@@ -250,12 +252,12 @@
     border: 1px solid #cbd5e1 !important;
   
     box-shadow:
-      0 2px 5px rgba(15, 23, 42, 0.35),
+      0 1px 2px rgba(15, 23, 42, 0.3),
       inset 0 1px 0 rgba(255, 255, 255, 0.95);
   
     z-index: 3;
   
-    transition: left 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: left 0.28s cubic-bezier(0.4, 0, 0.2, 1), transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   }
   
   /* =========================
@@ -263,7 +265,7 @@
      ========================= */
   
   button.directory-slide-toggle.directory-slide-toggle--edit .directory-slide-toggle__thumb {
-    left: calc(100% - 2px - 36px);
+    left: calc(100% - 2px - 22px);
   }
 .clients-card__top .button {
   margin: 0;
