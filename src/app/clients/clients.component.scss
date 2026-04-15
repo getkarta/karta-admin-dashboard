@@ -5,18 +5,18 @@
   max-width: 100%;
 
   .head {
-    font-size: 28px;
+    font-size: 22px;
     font-weight: 700;
     line-height: 1.25;
     letter-spacing: 0.01em;
     color: #1D1F2C;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
 
   .subtext {
     color: $color-text-secondary;
     font-size: 14px;
-    margin-bottom: 24px;
+    margin-bottom: 14px;
     max-width: 640px;
   }
 
@@ -39,20 +39,20 @@
   background: $color-white;
   border: 1px solid $color-medium-gray;
   border-radius: 16px;
-  padding: 20px;
+  padding: 12px;
   box-shadow: 0px 12px 24px -4px #919EAB1F;
 }
 
 .summary-card__label {
   color: $color-text-secondary;
   display: block;
-  font-size: 13px;
-  margin-bottom: 10px;
+  font-size: 15px;
+  margin-bottom: 1px;
 }
 
 .summary-card__value {
   color: $color-primary;
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
 }
 
@@ -65,24 +65,259 @@
 }
 
 .clients-card__top {
-  align-items: center;
   display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 20px;
+  gap: 12px;
+  /* top | sides | bottom — bottom controls gap above the divider line */
+  padding: 20px 20px 4px;
   border-bottom: 1px solid $color-medium-gray;
+}
+
+.clients-card__top-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
 }
 
 .clients-card__top h2 {
   color: $color-primary;
   font-size: 20px;
   font-weight: 700;
-  margin: 0 0 6px;
+  margin: 0;
+  padding: 0;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .header-actions {
   display: flex;
-  gap: 12px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  margin-top: -4px;
+}
+
+/*
+ * View / Edit sliding toggle — explicit contrast (global `button` / `button span`
+ * in styles.scss otherwise washes this out on white cards).
+ */
+/* =========================
+   Directory Slide Toggle
+   ========================= */
+
+   button.directory-slide-toggle {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    color: inherit !important;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+    line-height: 0 !important;
+    cursor: pointer;
+    flex-shrink: 0;
+    border-radius: 999px;
+    text-align: left !important;
+  
+    &:focus-visible {
+      outline: 2px solid $color-primary;
+      outline-offset: 2px;
+    }
+  }
+  
+  /* =========================
+     Track
+     ========================= */
+  
+  button.directory-slide-toggle .directory-slide-toggle__track {
+    display: block !important;
+    position: relative !important;
+    /* ~60% of original 86×42 — between the tiny variant and full-size */
+    width: 52px;
+    height: 25px;
+    line-height: 0;
+    border-radius: 999px;
+    overflow: hidden;
+    box-sizing: border-box;
+  
+    background-color: #111827 !important;
+    background-image: linear-gradient(180deg, #374151 0%, #1f2937 45%, #111827 100%) !important;
+    border: 1px solid #0f172a !important;
+  
+    box-shadow:
+      0 1px 4px rgba(15, 23, 42, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.12),
+      inset 0 -1px 2px rgba(0, 0, 0, 0.35);
+  }
+  
+  /* Edit state track */
+  button.directory-slide-toggle.directory-slide-toggle--edit .directory-slide-toggle__track {
+    background-color: #000000 !important;
+    background-image: linear-gradient(180deg, #404040 0%, #171717 50%, #000000 100%) !important;
+    border-color: #000000 !important;
+  }
+  
+  /* =========================
+     Remove global span issues
+     ========================= */
+  
+  button.directory-slide-toggle span::after {
+    content: none !important;
+    display: none !important;
+  }
+  
+  /* =========================
+     Labels
+     ========================= */
+  
+  button.directory-slide-toggle .directory-slide-toggle__label {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 1;
+    box-sizing: border-box;
+
+    font-size: 7px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.02em;
+
+    color: #94a3b8 !important;
+    pointer-events: none;
+    user-select: none;
+
+    transition: color 0.22s ease;
+  }
+
+  button.directory-slide-toggle .directory-slide-toggle__label--view {
+    right: 2px;
+    padding: 2px 6px 2px 8px;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  button.directory-slide-toggle .directory-slide-toggle__label--edit {
+    left: 2px;
+    padding: 2px 8px 2px 6px;
+    white-space: nowrap;
+  }
+  
+  /* Active label highlight */
+  button.directory-slide-toggle:not(.directory-slide-toggle--edit) .directory-slide-toggle__label--view {
+    color: #ffffff !important;
+  }
+  
+  button.directory-slide-toggle.directory-slide-toggle--edit .directory-slide-toggle__label--edit {
+    color: #ffffff !important;
+  }
+
+  /*
+   * The dim label sits under the thumb; glyphs can still anti-alias past the circle edge.
+   * Hide the covered label entirely — mode is obvious from the bright label + thumb position.
+   */
+  button.directory-slide-toggle.directory-slide-toggle--edit .directory-slide-toggle__label--view {
+    opacity: 0 !important;
+    visibility: hidden !important;
+  }
+
+  button.directory-slide-toggle:not(.directory-slide-toggle--edit) .directory-slide-toggle__label--edit {
+    opacity: 0 !important;
+    visibility: hidden !important;
+  }
+
+  /* =========================
+     Thumb (Main Fix)
+     ========================= */
+  
+  /* Thumb flush to each end (2px inset); vertical center in track padding box (track has 1px border) */
+  button.directory-slide-toggle .directory-slide-toggle__thumb {
+    position: absolute !important;
+    top: 50%;
+    left: 2px;
+    transform: translateY(-50%);
+
+    width: 22px;
+    height: 22px;
+  
+    border-radius: 50%;
+    box-sizing: border-box;
+  
+    background-color: #f8fafc !important;
+    background-image: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%) !important;
+    border: 1px solid #cbd5e1 !important;
+  
+    box-shadow:
+      0 1px 2px rgba(15, 23, 42, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  
+    z-index: 3;
+  
+    transition: left 0.28s cubic-bezier(0.4, 0, 0.2, 1), transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  /* =========================
+     Thumb Position (FIXED)
+     ========================= */
+  
+  button.directory-slide-toggle.directory-slide-toggle--edit .directory-slide-toggle__thumb {
+    left: calc(100% - 2px - 22px);
+  }
+.clients-card__top .button {
+  margin: 0;
+}
+
+.clients-card__search {
+  padding: 12px 20px 16px;
+  border-bottom: 1px solid $color-medium-gray;
+}
+
+.client-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0 12px 0 14px;
+  border: 1px solid $color-medium-gray;
+  border-radius: 10px;
+  background: $color-white;
+  box-sizing: border-box;
+  min-height: 44px;
+}
+
+.client-search:focus-within {
+  border-color: #98a2b3;
+  box-shadow: 0 0 0 1px rgb(152 162 179 / 25%);
+}
+
+.client-search__icon {
+  display: flex;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.client-search__input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 10px 8px 10px 0;
+  font-size: 14px;
+  color: $color-primary;
+  background: transparent;
+  outline: none;
+}
+
+.client-search__input::placeholder {
+  color: #98a2b3;
+}
+
+.client-search__input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .filter-tabs-wrap {
@@ -141,7 +376,7 @@
 
 .clients-table {
   border-collapse: collapse;
-  min-width: 1100px;
+  min-width: 960px;
   width: 100%;
 }
 
@@ -177,9 +412,13 @@
 }
 
 .client-name {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  display: block;
+}
+
+.client-name__text {
+  font-size: 13px;
+  font-weight: 700;
+  color: $color-primary;
 }
 
 .client-link {
@@ -198,15 +437,48 @@
   text-decoration: underline;
 }
 
-.client-name span {
-  color: $color-text-secondary;
-  font-size: 12px;
-}
-
-.client-code,
-.client-owner {
+.client-code {
   font-size: 12px;
   color: $color-muted;
+  vertical-align: middle;
+}
+
+.client-code__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.client-code__value {
+  font-size: 12px;
+  color: $color-muted;
+  word-break: break-all;
+}
+
+.client-code__copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: $color-muted;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.client-code__copy:hover {
+  background: $color-bg-light;
+  color: $color-primary;
+}
+
+.client-code__copied {
+  font-size: 11px;
+  font-weight: 600;
+  color: #00a76f;
 }
 
 .agent-tags {

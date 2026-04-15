@@ -1,5 +1,15 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Component, OnInit } from '@angular/core';
+import {
+  HttpClient,
+  HttpErrorResponse,
+  HttpHeaders,
+  HttpParams
+} from '@angular/common/http';
+import {
+  ChangeDetectorRef,
+  Component,
+  OnDestroy,
+  OnInit
+} from '@angular/core';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
@@ -9,6 +19,8 @@ export interface BillingInfo {
   tier?: string;
   allowNegativeBalance?: boolean;
   customPricing?: Record<string, Record<string, { creditPerUnit: number; unit?: string; rounding?: string; intervalSeconds?: number; minimumSeconds?: number }>>;
+  /** e.g. `{ prompt_builder: true }` — whether base credits apply for that product surface */
+  baseCreditUsage?: Record<string, boolean>;
 }
 
 export interface ClientRow {
@@ -19,6 +31,9 @@ export interface ClientRow {
   owner: string;
   createdOn: string;
   billing?: BillingInfo;
+  /** Carried from API for PUT /clients/:code (e.g. unarchive). */
+  dataResidency?: string;
+  voiceConcurrency?: number;
 }
 
 @Component({
@@ -27,10 +42,15 @@ export interface ClientRow {
   templateUrl: './clients.component.html',
   styleUrl: './clients.component.scss'
 })
-export class ClientsComponent implements OnInit {
+export class ClientsComponent implements OnInit, OnDestroy {
   clients: ClientRow[] = [];
 
-  selectedTab: 'all' | 'active' | 'archived' = 'all';
+  /** `edit`: full directory controls; `view`: read-only list (no add, links, or row actions). */
+  directoryUiMode: 'view' | 'edit' = 'view';
+
+  selectedTab: 'all' | 'active' | 'archived' = 'active';
+  /** Filters the current tab’s rows by name, code, agents, status. */
+  searchQuery = '';
   actionMessage = 'Loading clients from the backend.';
   isLoading = false;
   loadError = '';
@@ -38,14 +58,31 @@ export class ClientsComponent implements OnInit {
   pageSize = 10;
   readonly pageSizeOptions: number[] = [5, 10, 25, 50];
   private readonly apiBase = environment.apiUrl.replace(/\/$/, '');
+  /**
+   * Client list: GET {apiBase}/clients?includeArchived=true
+   * (see also GET …/clients and GET …/clients?archivedOnly=true).
+   */
+  private readonly locallyArchivedClients = new Map<string, ClientRow>();
+  private static readonly ARCHIVED_STORAGE_KEY = 'kartaAdminArchivedClientRows';
+  /** Brief “Copied” hint next to the client code that was copied */
+  copiedClientCode: string | null = null;
+  private copyFeedbackClearId: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private http: HttpClient,
-    private router: Router
+    private router: Router,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
+    this.hydrateLocallyArchivedFromStorage();
     void this.loadClients();
+  }
+
+  ngOnDestroy(): void {
+    if (this.copyFeedbackClearId != null) {
+      clearTimeout(this.copyFeedbackClearId);
+    }
   }
 
   get totalClients(): number {
@@ -60,14 +97,47 @@ export class ClientsComponent implements OnInit {
     return this.clients.filter((client) => client.status === 'Archived').length;
   }
 
-  get visibleClients(): ClientRow[] {
+  /** Rows after tab filter only (ignores search). */
+  private clientsForCurrentTab(): ClientRow[] {
     if (this.selectedTab === 'all') {
       return this.clients;
     }
-
     return this.clients.filter(
       (client) => client.status.toLowerCase() === this.selectedTab
     );
+  }
+
+  /** Rows after tab + search filter (used by the table and pagination). */
+  get visibleClients(): ClientRow[] {
+    const byTab = this.clientsForCurrentTab();
+    const q = this.searchQuery.trim().toLowerCase();
+    if (!q) {
+      return byTab;
+    }
+    return byTab.filter((client) => this.clientMatchesSearch(client, q));
+  }
+
+  setDirectoryUiMode(mode: 'view' | 'edit'): void {
+    this.directoryUiMode = mode;
+  }
+
+  toggleDirectoryUiMode(): void {
+    this.directoryUiMode = this.directoryUiMode === 'view' ? 'edit' : 'view';
+  }
+
+  /** Clickable client name only in edit mode for non-archived rows. */
+  showClientNameLink(client: ClientRow): boolean {
+    return this.directoryUiMode === 'edit' && client.status !== 'Archived';
+  }
+
+  get emptyDirectoryHint(): string {
+    if (this.clientsForCurrentTab().length === 0) {
+      return 'No clients available for the selected filter.';
+    }
+    if (this.visibleClients.length === 0) {
+      return 'No clients match your search.';
+    }
+    return '';
   }
 
   get pagedClients(): ClientRow[] {
@@ -95,6 +165,22 @@ export class ClientsComponent implements OnInit {
   setTab(tab: 'all' | 'active' | 'archived'): void {
     this.selectedTab = tab;
     this.pageIndex = 0;
+  }
+
+  onSearchQueryChange(): void {
+    this.pageIndex = 0;
+  }
+
+  private clientMatchesSearch(client: ClientRow, q: string): boolean {
+    const haystack = [
+      client.clientName,
+      client.clientCode,
+      client.status,
+      ...client.enabledAgents
+    ]
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(q);
   }
 
   onPageSizeChange(size: number): void {
@@ -128,6 +214,119 @@ export class ClientsComponent implements OnInit {
     );
   }
 
+  copyClientCode(code: string): void {
+    const text = (code || '').trim();
+    if (!text) {
+      return;
+    }
+
+    const done = (): void => {
+      this.copiedClientCode = text;
+      this.cdr.markForCheck();
+      if (this.copyFeedbackClearId != null) {
+        clearTimeout(this.copyFeedbackClearId);
+      }
+      this.copyFeedbackClearId = setTimeout(() => {
+        this.copiedClientCode = null;
+        this.copyFeedbackClearId = null;
+        this.cdr.markForCheck();
+      }, 2000);
+    };
+
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(text).then(done).catch(() => {
+        this.fallbackCopyTextToClipboard(text, done);
+      });
+      return;
+    }
+    this.fallbackCopyTextToClipboard(text, done);
+  }
+
+  private fallbackCopyTextToClipboard(text: string, onDone: () => void): void {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      onDone();
+    } catch {
+      this.actionMessage = 'Could not copy client code.';
+    }
+    document.body.removeChild(ta);
+  }
+
+  async unarchiveClient(client: ClientRow): Promise<void> {
+    const confirmed = window.confirm(
+      `Restore ${client.clientName} to the active client list?`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const accessToken = localStorage.getItem('accessToken');
+    if (!accessToken) {
+      this.loadError = 'Session expired. Please log in again.';
+      this.actionMessage = this.loadError;
+      return;
+    }
+
+    const headers = new HttpHeaders({
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    });
+    const url = `${this.apiBase}/clients/${encodeURIComponent(client.clientCode)}`;
+
+    try {
+      const body = await this.unarchiveClientRequest(url, headers);
+      this.loadError = '';
+      this.actionMessage =
+        body?.message?.trim() ||
+        `${client.clientName} restored successfully.`;
+      this.locallyArchivedClients.delete(client.clientCode);
+      this.persistLocallyArchivedToStorage();
+      await this.loadClients();
+    } catch (error) {
+      console.error('Failed to unarchive client', error);
+      this.loadError = '';
+      this.actionMessage = this.describeUnarchiveError(error);
+    }
+  }
+
+  /** PUT /admin/clients/:code — body `{ isArchived: false }` per API. */
+  private async unarchiveClientRequest(
+    url: string,
+    headers: HttpHeaders
+  ): Promise<{ message?: string; client?: unknown } | null> {
+    const res = await firstValueFrom(
+      this.http.put<{ message?: string; client?: unknown }>(
+        url,
+        { isArchived: false },
+        { headers, observe: 'response' }
+      )
+    );
+    return res.body;
+  }
+
+  private describeUnarchiveError(error: unknown): string {
+    if (error instanceof HttpErrorResponse) {
+      const body = error.error;
+      const fromApi =
+        body &&
+        typeof body === 'object' &&
+        'message' in body &&
+        typeof (body as { message: unknown }).message === 'string'
+          ? (body as { message: string }).message
+          : null;
+      const detail = fromApi || error.statusText || 'Unknown error';
+      return `Unable to restore client (${error.status}): ${detail}`;
+    }
+    return 'Unable to restore client right now.';
+  }
+
   async archiveClient(client: ClientRow): Promise<void> {
     const confirmed = window.confirm(
       `Are you sure you want to archive ${client.clientName}?`
@@ -144,22 +343,60 @@ export class ClientsComponent implements OnInit {
       return;
     }
 
-    try {
-      await firstValueFrom(
-        this.http.delete(`${this.apiBase}/clients/${client.clientCode}`, {
-          headers: new HttpHeaders({
-            Authorization: `Bearer ${accessToken}`
-          })
-        })
-      );
+    const headers = new HttpHeaders({
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    });
+    const url = `${this.apiBase}/clients/${encodeURIComponent(client.clientCode)}`;
 
-      this.actionMessage = `${client.clientName} archived successfully.`;
+    try {
+      const archiveBody = await this.archiveClientRequest(url, headers);
+      this.loadError = '';
+      this.actionMessage =
+        archiveBody?.message?.trim() ||
+        `${client.clientName} archived successfully.`;
+      this.locallyArchivedClients.set(client.clientCode, {
+        ...client,
+        status: 'Archived'
+      });
+      this.persistLocallyArchivedToStorage();
       await this.loadClients();
     } catch (error) {
       console.error('Failed to archive client', error);
-      this.loadError = 'Unable to archive client right now.';
-      this.actionMessage = this.loadError;
+      this.loadError = '';
+      this.actionMessage = this.describeArchiveError(error);
     }
+  }
+
+  /** PUT /admin/clients/:code — body `{ isArchived: true }` per API. */
+  private async archiveClientRequest(
+    url: string,
+    headers: HttpHeaders
+  ): Promise<{ message?: string; client?: unknown } | null> {
+    const res = await firstValueFrom(
+      this.http.put<{ message?: string; client?: unknown }>(
+        url,
+        { isArchived: true },
+        { headers, observe: 'response' }
+      )
+    );
+    return res.body;
+  }
+
+  private describeArchiveError(error: unknown): string {
+    if (error instanceof HttpErrorResponse) {
+      const body = error.error;
+      const fromApi =
+        body &&
+        typeof body === 'object' &&
+        'message' in body &&
+        typeof (body as { message: unknown }).message === 'string'
+          ? (body as { message: string }).message
+          : null;
+      const detail = fromApi || error.statusText || 'Unknown error';
+      return `Unable to archive client (${error.status}): ${detail}`;
+    }
+    return 'Unable to archive client right now.';
   }
 
   async loadClients(): Promise<void> {
@@ -175,26 +412,28 @@ export class ClientsComponent implements OnInit {
     this.loadError = '';
 
     try {
+      const listParams = new HttpParams().set('includeArchived', 'true');
       const response = await firstValueFrom(
         this.http.get<any>(`${this.apiBase}/clients`, {
           headers: new HttpHeaders({
             Authorization: `Bearer ${accessToken}`
-          })
+          }),
+          params: listParams
         })
       );
 
       const rows = this.extractClientRows(response);
-      this.clients = rows;
+      this.clients = this.mergeApiRowsWithLocallyArchived(rows);
       this.clampPageIndex();
-      this.actionMessage = rows.length
-        ? 'Clients loaded successfully from GET /admin/clients.'
+      this.actionMessage = this.clients.length
+        ? 'Clients loaded successfully.'
         : 'No clients found yet. Add Client flow will be the next page we create.';
     } catch (error) {
       console.error('Failed to load clients', error);
       this.clients = [];
       this.pageIndex = 0;
       this.loadError = 'Unable to load client list right now.';
-      this.actionMessage = this.loadError;
+      this.actionMessage = '';
     } finally {
       this.isLoading = false;
     }
@@ -204,6 +443,93 @@ export class ClientsComponent implements OnInit {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     void this.router.navigate(['/login']);
+  }
+
+  private hydrateLocallyArchivedFromStorage(): void {
+    try {
+      const raw = sessionStorage.getItem(
+        ClientsComponent.ARCHIVED_STORAGE_KEY
+      );
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) {
+        return;
+      }
+      this.locallyArchivedClients.clear();
+      for (const item of parsed) {
+        const row = item as ClientRow;
+        if (row?.clientCode) {
+          this.locallyArchivedClients.set(row.clientCode, {
+            ...row,
+            status: 'Archived'
+          });
+        }
+      }
+    } catch {
+      // ignore corrupt storage
+    }
+  }
+
+  private persistLocallyArchivedToStorage(): void {
+    try {
+      sessionStorage.setItem(
+        ClientsComponent.ARCHIVED_STORAGE_KEY,
+        JSON.stringify([...this.locallyArchivedClients.values()])
+      );
+    } catch {
+      // quota / private mode
+    }
+  }
+
+  /**
+   * API list is usually “active only”. Re-inject archived rows we know about, and
+   * drop local copies once the API lists them as Archived.
+   */
+  private mergeApiRowsWithLocallyArchived(fromApi: ClientRow[]): ClientRow[] {
+    const uniqueFromApi = this.dedupeClientRowsByCode(fromApi);
+
+    for (const row of uniqueFromApi) {
+      if (
+        row.status === 'Archived' &&
+        this.locallyArchivedClients.has(row.clientCode)
+      ) {
+        this.locallyArchivedClients.delete(row.clientCode);
+      }
+    }
+    this.persistLocallyArchivedToStorage();
+
+    const merged = uniqueFromApi.map((r) =>
+      this.locallyArchivedClients.has(r.clientCode)
+        ? { ...r, status: 'Archived' as const }
+        : { ...r }
+    );
+    const codes = new Set(merged.map((r) => r.clientCode));
+    for (const [code, snapshot] of this.locallyArchivedClients) {
+      if (!codes.has(code)) {
+        merged.push({ ...snapshot, status: 'Archived' });
+      }
+    }
+    return merged;
+  }
+
+  private dedupeClientRowsByCode(rows: ClientRow[]): ClientRow[] {
+    const map = new Map<string, ClientRow>();
+    for (const r of rows) {
+      if (!r?.clientCode) {
+        continue;
+      }
+      const existing = map.get(r.clientCode);
+      if (!existing) {
+        map.set(r.clientCode, r);
+        continue;
+      }
+      const prefer =
+        r.status === 'Archived' || existing.status !== 'Archived' ? r : existing;
+      map.set(r.clientCode, prefer);
+    }
+    return [...map.values()];
   }
 
   private extractClientRows(response: any): ClientRow[] {
@@ -222,14 +548,46 @@ export class ClientsComponent implements OnInit {
       status: this.normalizeStatus(client),
       owner: client?.owner || client?.createdBy || client?.email || 'Admin',
       createdOn: this.formatDate(client?.createdAt || client?.updatedAt),
-      billing: client?.billing ?? client?.bi
+      billing: client?.billing ?? client?.bi,
+      dataResidency: this.extractDataResidency(client),
+      voiceConcurrency: this.extractVoiceConcurrency(client)
     }));
+  }
+
+  private extractDataResidency(client: any): string | undefined {
+    const dr = client?.dataResidency ?? client?.data_residency;
+    return typeof dr === 'string' && dr.trim() ? dr.trim() : undefined;
+  }
+
+  private extractVoiceConcurrency(client: any): number | undefined {
+    const v = client?.voiceConcurrency ?? client?.voice_concurrency;
+    const n = Number(v);
+    if (Number.isFinite(n) && Number.isInteger(n) && n >= 1) {
+      return n;
+    }
+    return undefined;
   }
 
   private normalizeStatus(client: any): 'Active' | 'Draft' | 'Archived' {
     const rawStatus = (client?.status || '').toString().toLowerCase();
+    const archiveStatus = (client?.archiveStatus || client?.lifecycle || '')
+      .toString()
+      .toLowerCase();
 
-    if (rawStatus === 'archived' || client?.archived === true || client?.isArchived === true) {
+    const explicitlyUnarchived =
+      client?.archived === false || client?.isArchived === false;
+
+    const isArchived =
+      rawStatus === 'archived' ||
+      rawStatus === 'inactive' ||
+      archiveStatus === 'archived' ||
+      client?.archived === true ||
+      client?.isArchived === true ||
+      client?.deletedAt != null ||
+      /* Keep historical archivedAt only when API does not say “not archived”. */
+      (client?.archivedAt != null && !explicitlyUnarchived);
+
+    if (isArchived) {
       return 'Archived';
     }
 
