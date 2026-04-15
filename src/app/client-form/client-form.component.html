@@ -7,12 +7,20 @@
     </p>
   </header>
 
+  <div
+    class="basic-info-card-toolbar"
+    *ngIf="isEditMode && !clientPageViewOnly && !pageEditUnlocked">
+    <button type="button" class="button basic-info-card-toolbar__edit" (click)="startPageEdit()">
+      Edit
+    </button>
+  </div>
+
   <section class="card client-form-card">
       <div class="client-form-card__header">
         <h2 class="card__title">Basic information</h2>
         <span class="client-badge" *ngIf="isEditMode && clientCode">{{ clientCode }}</span>
       </div>
-      <form [formGroup]="clientForm" (ngSubmit)="onSubmit()" class="client-form">
+      <form [formGroup]="clientForm" (ngSubmit)="onClientFormSubmit($event)" class="client-form">
         <ng-template #residencyAndVoiceFields>
           <div class="form-group form-group--data-residency">
             <span class="form-label" id="data-residency-label">Data Residency</span>
@@ -26,7 +34,7 @@
                 class="residency-dd__trigger"
                 id="data-residency-trigger"
                 (click)="toggleDataResidencyMenu($event)"
-                [disabled]="clientPageViewOnly || isLoadingDataResidencyOptions"
+                [disabled]="pageFieldsReadOnly || isLoadingDataResidencyOptions"
                 [attr.aria-expanded]="dataResidencyMenuOpen"
                 aria-haspopup="listbox"
                 aria-controls="data-residency-listbox"
@@ -70,7 +78,8 @@
               step="1"
               inputmode="numeric"
               list="voice-concurrency-presets"
-              placeholder="e.g. 5" />
+              placeholder="e.g. 5"
+              [disabled]="pageFieldsReadOnly" />
             <datalist id="voice-concurrency-presets">
               <option *ngFor="let n of voiceConcurrencyOptions" [attr.value]="n"></option>
             </datalist>
@@ -83,7 +92,8 @@
             type="text"
             formControlName="clientName"
             placeholder="Enter client name"
-            class="form-input" />
+            class="form-input"
+            [disabled]="pageFieldsReadOnly" />
           <small
             class="field-error"
             *ngIf="clientForm.controls['clientName'].touched && clientForm.controls['clientName'].invalid">
@@ -105,7 +115,7 @@
               <input
                 type="checkbox"
                 [checked]="isAgentEnabled(agent.value)"
-                [disabled]="clientPageViewOnly"
+                [disabled]="pageFieldsReadOnly"
                 (change)="toggleEnabledAgent(agent.value, $event)" />
               <span class="agent-checkbox-row__text">{{ agent.label }}</span>
             </label>
@@ -119,14 +129,16 @@
         <div class="message message--error" *ngIf="errorMessage">{{ errorMessage }}</div>
         <div class="message message--success" *ngIf="successMessage">{{ successMessage }}</div>
 
-        <div class="form-actions" *ngIf="!clientPageViewOnly">
-          <button type="button" class="button button-transparent" (click)="goBack()">Cancel</button>
-          <button type="submit" class="button" [disabled]="isSubmitting">
-            {{ isSubmitting
-              ? (isEditMode ? 'Updating...' : 'Creating...')
-              : (isEditMode ? 'Update Client' : 'Create Client') }}
-          </button>
-        </div>
+        <!-- Keeps Enter in basic fields submitting the form; primary actions are below Pricing & Billing. -->
+        <button
+          *ngIf="!isEditMode && !clientPageViewOnly"
+          type="submit"
+          class="client-form__hidden-submit"
+          tabindex="-1"
+          aria-hidden="true"
+          [disabled]="isSubmitting">
+          Create
+        </button>
       </form>
   </section>
 
@@ -136,11 +148,19 @@
             <h2 class="card__title">Users</h2>
             <p class="card__description">Members under this client.</p>
           </div>
-          <div class="users-section-actions" *ngIf="!clientPageViewOnly">
-            <button type="button" class="button" (click)="openAddUserModal()">Add User</button>
+          <div class="users-section-actions">
             <button
               type="button"
-              class="button"
+              class="button users-section-actions__add-user"
+              [disabled]="!canManageClientUsers"
+              [attr.aria-disabled]="!canManageClientUsers ? true : null"
+              (click)="openAddUserModal()">
+              Add User
+            </button>
+            <button
+              *ngIf="canManageClientUsers"
+              type="button"
+              class="button users-section-actions__delete-user"
               [disabled]="!isLoadingUsers && clientUsers.length === 0"
               (click)="openDeleteUserModal()">
               Delete User
@@ -156,7 +176,7 @@
                 <th>Email</th>
                 <th>Role</th>
                 <th>Added</th>
-                <th *ngIf="!clientPageViewOnly" class="users-table__actions-col">Actions</th>
+                <th *ngIf="canManageClientUsers" class="users-table__actions-col">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -164,7 +184,7 @@
                 <td>{{ u.email }}</td>
                 <td>{{ u.role }}</td>
                 <td>{{ u.createdAt | date:'short' }}</td>
-                <td *ngIf="!clientPageViewOnly" class="users-table__actions-col">
+                <td *ngIf="canManageClientUsers" class="users-table__actions-col">
                   <button
                     type="button"
                     class="users-table__edit"
@@ -325,10 +345,20 @@
     </div>
   </div>
 
-  <section class="card pricing-management" *ngIf="isEditMode">
+  <section class="card pricing-management" *ngIf="isEditMode || !clientPageViewOnly">
         <div class="card__header">
           <h2 class="card__title">Pricing & Billing</h2>
-          <p class="card__description">Set billing tier and custom credit-per-unit pricing for this client.</p>
+          <p class="card__description" *ngIf="clientPageViewOnly">
+            Billing tier and custom pricing for this client (read-only). Data is loaded from the server when you open
+            View.
+          </p>
+          <p class="card__description" *ngIf="isEditMode && !clientPageViewOnly">
+            Set billing tier and custom credit-per-unit pricing for this client.
+          </p>
+          <p class="card__description" *ngIf="!isEditMode">
+            Set billing tier and custom pricing for this client. It is saved with the same billing API when you click
+            Create Client.
+          </p>
         </div>
 
         <div class="pricing-form">
@@ -343,7 +373,7 @@
                   class="residency-dd__trigger"
                   id="billing-tier-trigger"
                   (click)="toggleBillingTierMenu($event)"
-                  [disabled]="clientPageViewOnly"
+                  [disabled]="pageFieldsReadOnly"
                   [attr.aria-expanded]="billingTierMenuOpen"
                   aria-haspopup="listbox"
                   aria-controls="billing-tier-listbox"
@@ -375,7 +405,7 @@
             </div>
             <div class="form-group form-group--checkbox pricing-allow-negative">
               <label class="checkbox-label">
-                <input type="checkbox" [(ngModel)]="allowNegativeBalance" [ngModelOptions]="{ standalone: true }" class="checkbox-input" [disabled]="clientPageViewOnly" />
+                <input type="checkbox" [(ngModel)]="allowNegativeBalance" [ngModelOptions]="{ standalone: true }" class="checkbox-input" [disabled]="pageFieldsReadOnly" />
                 <span>Allow negative balance</span>
               </label>
             </div>
@@ -386,7 +416,7 @@
                   [(ngModel)]="baseCreditUsagePromptBuilder"
                   [ngModelOptions]="{ standalone: true }"
                   class="checkbox-input"
-                  [disabled]="clientPageViewOnly" />
+                  [disabled]="pageFieldsReadOnly" />
                 <span>Prompt builder base credit usage</span>
               </label>
             </div>
@@ -394,10 +424,20 @@
 
           <div class="custom-pricing-block">
             <h3 class="block-title">Custom pricing (credits per unit)</h3>
-            <p class="field-help">
-              Add rules for feature + unit type. Saving sends them as custom pricing on the billing API (no rows means an empty map).
+            <p class="field-help" *ngIf="!pageFieldsReadOnly && !clientPageViewOnly">
+              Add rules for feature + unit type. These are sent as custom pricing on the billing API (no rows means an
+              empty map).
             </p>
-            <div class="pricing-rules-wrap">
+            <p class="field-help" *ngIf="isEditMode && pageFieldsReadOnly && !clientPageViewOnly">
+              Billing is read-only until you click Edit. After editing, use Save below this table to update the client
+              and billing together.
+            </p>
+            <p class="field-help" *ngIf="clientPageViewOnly">
+              Rules stored in custom pricing for this client. Empty means no custom rules are configured.
+            </p>
+            <div
+              class="pricing-rules-wrap"
+              [class.pricing-rules-wrap--view-only]="pageFieldsReadOnly">
               <div class="pricing-rule-header">
                 <span>Feature</span>
                 <span>Unit type</span>
@@ -405,7 +445,7 @@
                 <span>Rounding</span>
                 <span>Interval (s)</span>
                 <span>Min (s)</span>
-                <span></span>
+                <span *ngIf="!pageFieldsReadOnly" class="pricing-rule-header__actions"></span>
               </div>
               <div class="pricing-rule-row" *ngFor="let rule of pricingRules; let i = index">
                 <div
@@ -415,7 +455,7 @@
                     type="button"
                     class="residency-dd__trigger"
                     (click)="togglePricingDd($event, i, 'feature')"
-                    [disabled]="clientPageViewOnly"
+                    [disabled]="pageFieldsReadOnly"
                     [attr.aria-expanded]="isPricingDdOpen(i, 'feature')"
                     aria-haspopup="listbox"
                     [attr.aria-controls]="'pricing-feature-' + i"
@@ -451,7 +491,7 @@
                     type="button"
                     class="residency-dd__trigger"
                     (click)="togglePricingDd($event, i, 'unit')"
-                    [disabled]="clientPageViewOnly"
+                    [disabled]="pageFieldsReadOnly"
                     [attr.aria-expanded]="isPricingDdOpen(i, 'unit')"
                     aria-haspopup="listbox"
                     [attr.aria-controls]="'pricing-unit-' + i"
@@ -488,7 +528,7 @@
                   placeholder="Credits"
                   min="0.01"
                   step="0.01"
-                  [disabled]="clientPageViewOnly">
+                  [disabled]="pageFieldsReadOnly">
                 <div
                   class="residency-dd pricing-rule-dd"
                   [class.residency-dd--open]="isPricingDdOpen(i, 'rounding')">
@@ -496,7 +536,7 @@
                     type="button"
                     class="residency-dd__trigger"
                     (click)="togglePricingDd($event, i, 'rounding')"
-                    [disabled]="clientPageViewOnly"
+                    [disabled]="pageFieldsReadOnly"
                     [attr.aria-expanded]="isPricingDdOpen(i, 'rounding')"
                     aria-haspopup="listbox"
                     [attr.aria-controls]="'pricing-rounding-' + i"
@@ -534,7 +574,7 @@
                     placeholder="Interval (s)"
                     min="1"
                     title="Optional: billing interval for seconds-based units"
-                    [disabled]="clientPageViewOnly">
+                    [disabled]="pageFieldsReadOnly">
                   <input
                     type="number"
                     [(ngModel)]="rule.minimumSeconds"
@@ -543,26 +583,53 @@
                     placeholder="Min (s)"
                     min="0"
                     title="Optional: minimum duration for seconds-based units"
-                    [disabled]="clientPageViewOnly">
+                    [disabled]="pageFieldsReadOnly">
                 </ng-container>
                 <ng-template #noIntervalMin>
                   <span class="pricing-rule-placeholder">—</span>
                   <span class="pricing-rule-placeholder">—</span>
                 </ng-template>
-                <button type="button" class="button button-transparent button-small" (click)="removePricingRule(i)" [disabled]="clientPageViewOnly">Remove</button>
+                <button
+                  *ngIf="!pageFieldsReadOnly"
+                  type="button"
+                  class="button button-transparent button-small"
+                  (click)="removePricingRule(i)">
+                  Remove
+                </button>
               </div>
             </div>
-            <button type="button" class="button button-secondary" (click)="addPricingRule()" [disabled]="clientPageViewOnly">+ Add rule</button>
+            <button
+              type="button"
+              class="button button-secondary"
+              *ngIf="!pageFieldsReadOnly"
+              (click)="addPricingRule()"
+              [disabled]="pageFieldsReadOnly">
+              + Add rule
+            </button>
           </div>
 
           <div class="message message--error" *ngIf="pricingErrorMessage">{{ pricingErrorMessage }}</div>
           <div class="message message--success" *ngIf="pricingSuccessMessage">{{ pricingSuccessMessage }}</div>
-          <div class="form-actions" *ngIf="!clientPageViewOnly">
-            <button type="button" class="button"
-              [disabled]="isSavingPricing"
-              (click)="savePricing()">
-              {{ isSavingPricing ? 'Saving...' : 'Save pricing' }}
+
+          <div class="pricing-form__page-actions" *ngIf="isEditMode && !clientPageViewOnly && pageEditUnlocked">
+            <button
+              type="button"
+              class="button button-transparent"
+              [disabled]="isSavingEntirePage"
+              (click)="cancelPageEdit()">
+              Cancel
+            </button>
+            <button type="button" class="button" [disabled]="isSavingEntirePage" (click)="saveEntireEditPage()">
+              {{ isSavingEntirePage ? 'Saving...' : 'Save' }}
             </button>
           </div>
         </div>
   </section>
+
+  <div class="create-page-footer-actions" *ngIf="!isEditMode && !clientPageViewOnly">
+    <button type="button" class="button button-transparent" (click)="goBack()">Cancel</button>
+    <button type="button" class="button" [disabled]="isSubmitting" (click)="onSubmit()">
+      {{ isSubmitting ? 'Creating...' : 'Create Client' }}
+    </button>
+  </div>
+</div>

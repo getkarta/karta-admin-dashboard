@@ -22,30 +22,6 @@
       <div class="clients-card__top-title">
         <h2>Client Directory</h2>
       </div>
-
-      <div class="header-actions">
-        <button
-          type="button"
-          class="directory-slide-toggle"
-          [class.directory-slide-toggle--edit]="directoryUiMode === 'edit'"
-          [attr.aria-pressed]="directoryUiMode === 'edit'"
-          [attr.aria-label]="
-            directoryUiMode === 'view'
-              ? 'Directory is in View mode. Activate to switch to Edit mode.'
-              : 'Directory is in Edit mode. Activate to switch to View mode.'
-          "
-          (click)="toggleDirectoryUiMode()">
-          <span class="directory-slide-toggle__track">
-            <span class="directory-slide-toggle__label directory-slide-toggle__label--edit" aria-hidden="true">
-              Edit
-            </span>
-            <span class="directory-slide-toggle__label directory-slide-toggle__label--view" aria-hidden="true">
-              View
-            </span>
-            <span class="directory-slide-toggle__thumb" aria-hidden="true"></span>
-          </span>
-        </button>
-      </div>
     </div>
 
     <div class="clients-card__search">
@@ -98,11 +74,7 @@
             Archived
           </button>
         </div>
-        <button
-          *ngIf="directoryUiMode === 'edit'"
-          type="button"
-          class="button filter-tabs-row__add"
-          (click)="addClient()">
+        <button type="button" class="button filter-tabs-row__add" (click)="addClient()">
           Add Client
         </button>
       </div>
@@ -127,7 +99,7 @@
             <th scope="col">Enabled Agents</th>
             <th scope="col">Status</th>
             <th scope="col">Created On</th>
-            <th *ngIf="directoryUiMode === 'edit'" scope="col">Actions</th>
+            <th scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -135,7 +107,11 @@
             <td>
               <div class="client-name">
                 <ng-container *ngIf="showClientNameLink(client); else clientNamePlain">
-                  <button type="button" class="client-link" (click)="onClientNameClick(client)">
+                  <button
+                    type="button"
+                    class="client-link"
+                    (click)="editClient(client)"
+                    [attr.aria-label]="'Open ' + client.clientName + ' for editing'">
                     {{ client.clientName }}
                   </button>
                 </ng-container>
@@ -174,7 +150,6 @@
                       stroke-linecap="round" />
                   </svg>
                 </button>
-                <span class="client-code__copied" *ngIf="copiedClientCode === client.clientCode">Copied</span>
               </div>
             </td>
             <td>
@@ -196,7 +171,7 @@
               </span>
             </td>
             <td>{{ client.createdOn }}</td>
-            <td *ngIf="directoryUiMode === 'edit'">
+            <td>
               <div class="row-actions" *ngIf="client.status === 'Archived'; else activeRowActions">
                 <button type="button" class="inline-button" (click)="unarchiveClient(client)">
                   Unarchive
@@ -204,7 +179,7 @@
               </div>
               <ng-template #activeRowActions>
                 <div class="row-actions">
-                  <button type="button" class="inline-button" (click)="editClient(client)">Edit</button>
+                  <button type="button" class="inline-button" (click)="editClient(client)">View</button>
                   <button type="button" class="inline-button inline-button--danger" (click)="archiveClient(client)">
                     Archive
                   </button>

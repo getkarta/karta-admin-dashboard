@@ -72,9 +72,8 @@
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
-  /* top | sides | bottom — bottom controls gap above the divider line */
   padding: 20px 20px 4px;
   border-bottom: 1px solid $color-medium-gray;
 }
@@ -96,167 +95,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.header-actions {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 12px;
-}
-
-/*
- * View / Edit sliding toggle — explicit contrast (global `button` / `button span`
- * in styles.scss otherwise washes this out on white cards).
- */
-/* =========================
-   Directory Slide Toggle
-   ========================= */
-
-   button.directory-slide-toggle {
-    display: block !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    border: none !important;
-    background: transparent !important;
-    color: inherit !important;
-    font-size: inherit !important;
-    font-weight: inherit !important;
-    line-height: 0 !important;
-    cursor: pointer;
-    flex-shrink: 0;
-    border-radius: 999px;
-    text-align: left !important;
-  
-    &:focus-visible {
-      outline: 2px solid $color-primary;
-      outline-offset: 2px;
-    }
-  }
-  
-  /* =========================
-     Track
-     ========================= */
-  
-  button.directory-slide-toggle .directory-slide-toggle__track {
-    display: block !important;
-    position: relative !important;
-    width: 60px;
-    height: 28px;
-    --toggle-thumb: 28px;
-    --toggle-travel: calc(60px - var(--toggle-thumb));
-    line-height: 0;
-    border-radius: 999px;
-    overflow: hidden;
-    box-sizing: border-box;
-
-    background: $color-primary !important;
-    border: none !important;
-    box-shadow: none;
-  }
-
-  /* =========================
-     Remove global span issues
-     ========================= */
-  
-  button.directory-slide-toggle span::after {
-    content: none !important;
-    display: none !important;
-  }
-  
-  /* =========================
-     Labels
-     ========================= */
-  
-  button.directory-slide-toggle .directory-slide-toggle__label {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 1;
-    box-sizing: border-box;
-
-    font-size: 8.5px !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-
-    color: #cbd5e1 !important;
-    pointer-events: none;
-    user-select: none;
-
-    transition: color 0.2s ease;
-  }
-
-  button.directory-slide-toggle .directory-slide-toggle__label--view {
-    right: 6px;
-    padding: 0 2px 0 10px;
-    text-align: right;
-    white-space: nowrap;
-  }
-
-  button.directory-slide-toggle .directory-slide-toggle__label--edit {
-    left: 6px;
-    padding: 0 10px 0 2px;
-    white-space: nowrap;
-  }
-  
-  /* Active label highlight */
-  button.directory-slide-toggle:not(.directory-slide-toggle--edit) .directory-slide-toggle__label--view {
-    color: #ffffff !important;
-  }
-  
-  button.directory-slide-toggle.directory-slide-toggle--edit .directory-slide-toggle__label--edit {
-    color: #ffffff !important;
-  }
-
-  /*
-   * The dim label sits under the thumb; glyphs can still anti-alias past the circle edge.
-   * Hide the covered label entirely — mode is obvious from the bright label + thumb position.
-   */
-  button.directory-slide-toggle.directory-slide-toggle--edit .directory-slide-toggle__label--view {
-    opacity: 0 !important;
-    visibility: hidden !important;
-  }
-
-  button.directory-slide-toggle:not(.directory-slide-toggle--edit) .directory-slide-toggle__label--edit {
-    opacity: 0 !important;
-    visibility: hidden !important;
-  }
-
-  /* =========================
-     Thumb (Main Fix)
-     ========================= */
-  
-  /*
-   * Thumb: transform (not `left`) for sharper subpixels; tiny horizontal overlap
-   * clips under the track so no black “arc” shows at the pill ends.
-   */
-  button.directory-slide-toggle .directory-slide-toggle__thumb {
-    position: absolute !important;
-    top: 0;
-    left: 0;
-    width: var(--toggle-thumb, 28px);
-    height: var(--toggle-thumb, 28px);
-    transform: translate3d(-0.5px, 0, 0);
-    backface-visibility: hidden;
-
-    border-radius: 50%;
-    box-sizing: border-box;
-
-    background: $color-white !important;
-    border: none !important;
-    box-shadow: none;
-
-    z-index: 3;
-
-    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  button.directory-slide-toggle.directory-slide-toggle--edit .directory-slide-toggle__thumb {
-    transform: translate3d(calc(var(--toggle-travel, 32px) + 0.5px), 0, 0);
-  }
-.clients-card__top .button {
-  margin: 0;
 }
 
 .clients-card__search {
@@ -570,12 +408,6 @@
 .client-code__copy:hover {
   background: $color-bg-light;
   color: $color-primary;
-}
-
-.client-code__copied {
-  font-size: 11px;
-  font-weight: 600;
-  color: #00a76f;
 }
 
 .agent-tags {

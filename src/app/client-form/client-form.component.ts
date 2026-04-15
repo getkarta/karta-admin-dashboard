@@ -1,4 +1,8 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import {
+  HttpClient,
+  HttpErrorResponse,
+  HttpHeaders
+} from '@angular/common/http';
 import {
   Component,
   ElementRef,
@@ -25,6 +29,16 @@ import {
   styleUrl: './client-form.component.scss'
 })
 export class ClientFormComponent implements OnInit {
+  /** Treat common `view` query values as directory read-only mode. */
+  private static isDirectoryViewQuery(
+    value: string | null | undefined
+  ): boolean {
+    if (value == null) {
+      return false;
+    }
+    const v = String(value).trim().toLowerCase();
+    return v === '1' || v === 'true' || v === 'yes' || v === 'readonly';
+  }
   @ViewChild('residencyDropdownRoot')
   residencyDropdownRoot?: ElementRef<HTMLElement>;
 
@@ -37,6 +51,31 @@ export class ClientFormComponent implements OnInit {
   isEditMode = false;
   /** Opened from directory in view mode (?view=1); all edits disabled. */
   clientPageViewOnly = false;
+  /**
+   * Update Client: fields start read-only; **Edit** unlocks editing until **Save** or **Cancel**
+   * on the page toolbar. Create / directory view ignore this flag.
+   */
+  pageEditUnlocked = false;
+  /** Snapshot for **Cancel** while `pageEditUnlocked` is true (edit mode only). */
+  private editPageCancelSnapshot: {
+    clientName: string;
+    enabledAgents: string[];
+    dataResidency: string;
+    voiceConcurrency: number;
+    billingTier: string;
+    allowNegativeBalance: boolean;
+    baseCreditUsagePromptBuilder: boolean;
+    pricingRules: Array<{
+      featureCode: string;
+      unitType: string;
+      creditPerUnit: number;
+      rounding: string;
+      intervalSeconds?: number;
+      minimumSeconds?: number;
+    }>;
+  } | null = null;
+  /** Save (client PUT + billing PUT) from the actions below Pricing & Billing. */
+  isSavingEntirePage = false;
   clientCode = '';
   errorMessage = '';
   successMessage = '';
@@ -157,6 +196,9 @@ export class ClientFormComponent implements OnInit {
    */
   private readonly apiBase = environment.apiUrl.replace(/\/$/, '');
 
+  /** From `navigate(..., { state: { flashPricingError } })` after create + billing PUT failure. */
+  private pendingPricingRouteFlash = '';
+
   constructor(
     private fb: FormBuilder,
     private route: ActivatedRoute,
@@ -164,6 +206,11 @@ export class ClientFormComponent implements OnInit {
     private http: HttpClient,
     private clientSettingsMeta: ClientSettingsMetaService
   ) {
+    const nav = this.router.getCurrentNavigation();
+    const flash = nav?.extras?.state?.['flashPricingError'];
+    if (typeof flash === 'string' && flash.trim()) {
+      this.pendingPricingRouteFlash = flash.trim();
+    }
     this.clientForm = this.fb.group({
       clientName: ['', [Validators.required, Validators.minLength(3)]],
       dataResidency: this.fb.nonNullable.control<string>('global'),
@@ -217,12 +264,12 @@ export class ClientFormComponent implements OnInit {
 
   toggleDataResidencyMenu(ev: MouseEvent): void {
     ev.stopPropagation();
-    if (this.clientPageViewOnly || this.isLoadingDataResidencyOptions) return;
+    if (this.pageFieldsReadOnly || this.isLoadingDataResidencyOptions) return;
     this.dataResidencyMenuOpen = !this.dataResidencyMenuOpen;
   }
 
   selectDataResidency(value: string): void {
-    if (this.clientPageViewOnly) return;
+    if (this.pageFieldsReadOnly) return;
     this.clientForm.patchValue({ dataResidency: value });
     this.dataResidencyMenuOpen = false;
   }
@@ -259,13 +306,13 @@ export class ClientFormComponent implements OnInit {
 
   toggleBillingTierMenu(ev: MouseEvent): void {
     ev.stopPropagation();
-    if (this.clientPageViewOnly) return;
+    if (this.pageFieldsReadOnly) return;
     this.pricingDd = null;
     this.billingTierMenuOpen = !this.billingTierMenuOpen;
   }
 
   selectBillingTier(value: string): void {
-    if (this.clientPageViewOnly) return;
+    if (this.pageFieldsReadOnly) return;
     this.billingTier = value;
     this.billingTierMenuOpen = false;
   }
@@ -276,7 +323,7 @@ export class ClientFormComponent implements OnInit {
     field: 'feature' | 'unit' | 'rounding'
   ): void {
     ev.stopPropagation();
-    if (this.clientPageViewOnly) return;
+    if (this.pageFieldsReadOnly) return;
     this.billingTierMenuOpen = false;
     if (
       this.pricingDd?.row === row &&
@@ -328,7 +375,7 @@ export class ClientFormComponent implements OnInit {
     field: 'feature' | 'unit' | 'rounding',
     value: string
   ): void {
-    if (this.clientPageViewOnly) return;
+    if (this.pageFieldsReadOnly) return;
     const rule = this.pricingRules[row];
     if (!rule) return;
     if (field === 'feature') rule.featureCode = value;
@@ -343,7 +390,7 @@ export class ClientFormComponent implements OnInit {
   }
 
   toggleEnabledAgent(agentValue: string, ev: Event): void {
-    if (this.clientPageViewOnly) {
+    if (this.pageFieldsReadOnly) {
       return;
     }
     const checked = (ev.target as HTMLInputElement).checked;
@@ -362,7 +409,9 @@ export class ClientFormComponent implements OnInit {
     const code = this.route.snapshot.paramMap.get('code');
 
     this.clientPageViewOnly =
-      this.route.snapshot.queryParamMap.get('view') === '1' ||
+      ClientFormComponent.isDirectoryViewQuery(
+        this.route.snapshot.queryParamMap.get('view')
+      ) ||
       !!(typeof history !== 'undefined' && history.state?.viewOnly === true);
 
     if (!code) {
@@ -374,14 +423,31 @@ export class ClientFormComponent implements OnInit {
     this.clientCode = code;
 
     const client = history.state?.client as ClientRow | undefined;
-    void this.hydrateEditClient(client).then(() =>
-      this.applyDirectoryViewOnlyMode()
-    );
+    void this.hydrateEditClient(client).then(() => {
+      this.applyDirectoryViewOnlyMode();
+      this.applyPendingPricingRouteFlash();
+    });
+  }
+
+  private applyPendingPricingRouteFlash(): void {
+    if (!this.pendingPricingRouteFlash) {
+      return;
+    }
+    this.pricingErrorMessage = this.pendingPricingRouteFlash;
+    this.pendingPricingRouteFlash = '';
   }
 
   private async hydrateEditClient(client: ClientRow | undefined): Promise<void> {
+    if (this.isEditMode && !this.clientPageViewOnly) {
+      this.pageEditUnlocked = false;
+      this.editPageCancelSnapshot = null;
+    }
     if (client) {
       await this.bootstrapEditFormWithClient(client);
+      // Directory “View” often opens from list rows without full `billing`; reload from API so pricing table matches server.
+      if (this.clientPageViewOnly) {
+        await this.loadClientByCode();
+      }
     } else {
       await this.loadClientByCode();
     }
@@ -392,6 +458,8 @@ export class ClientFormComponent implements OnInit {
     if (!this.clientPageViewOnly || !this.isEditMode) {
       return;
     }
+    this.pageEditUnlocked = false;
+    this.editPageCancelSnapshot = null;
     this.clientForm.disable({ emitEvent: false });
     this.dataResidencyMenuOpen = false;
     this.billingTierMenuOpen = false;
@@ -405,13 +473,26 @@ export class ClientFormComponent implements OnInit {
     return this.isEditMode ? 'Update Client' : 'Create Client';
   }
 
+  /** Basic info + pricing are read-only (directory view, or Update Client before Edit). */
+  get pageFieldsReadOnly(): boolean {
+    return this.clientPageViewOnly || (this.isEditMode && !this.pageEditUnlocked);
+  }
+
+  /** Add / delete / row-edit users only after Edit is clicked (never in directory view). */
+  get canManageClientUsers(): boolean {
+    return this.pageEditUnlocked && !this.clientPageViewOnly;
+  }
+
   get clientFormPageDescription(): string {
     if (this.clientPageViewOnly) {
       return 'Read-only: review basic information, users, and pricing below. Nothing on this page can be changed.';
     }
-    return this.isEditMode
-      ? 'Update the client name and choose which agents remain enabled.'
-      : 'Create a new client record. Agents can be configured after the client is created.';
+    if (this.isEditMode) {
+      return this.pageEditUnlocked
+        ? 'You are editing this client. Use Save under Pricing & Billing to apply client details and pricing together, or Cancel to discard changes. User actions (add, delete, edit) are available while editing.'
+        : 'Review client details, users, and pricing. Click Edit above Basic information to change anything—including users—then use Save and Cancel under Pricing & Billing to apply or discard all edits together.';
+    }
+    return 'Create a new client record. Configure optional pricing below; it is saved when you create the client. Agents can be enabled after the client is created.';
   }
 
   private pickResidencyAndVoiceFromUnknown(
@@ -563,6 +644,7 @@ export class ClientFormComponent implements OnInit {
     const billing = (client as any)?.billing ?? (client as any)?.bi;
     if (!billing) {
       this.allowNegativeBalance = false;
+      this.pricingRules = [];
       return;
     }
     this.billingTier = (billing.tier && billing.tier !== 'free') ? billing.tier : 'basic';
@@ -574,8 +656,8 @@ export class ClientFormComponent implements OnInit {
       this.baseCreditUsagePromptBuilder = false;
     }
     const cp = billing.customPricing;
+    this.pricingRules = [];
     if (cp && typeof cp === 'object') {
-      this.pricingRules = [];
       for (const [featureCode, unitMap] of Object.entries(cp)) {
         if (!unitMap || typeof unitMap !== 'object') continue;
         for (const [unitType, rule] of Object.entries(unitMap)) {
@@ -594,7 +676,7 @@ export class ClientFormComponent implements OnInit {
   }
 
   async onSubmit(): Promise<void> {
-    if (this.clientPageViewOnly) {
+    if (this.clientPageViewOnly || this.isEditMode) {
       return;
     }
     if (this.clientForm.invalid) {
@@ -614,12 +696,6 @@ export class ClientFormComponent implements OnInit {
 
     const formValue = this.clientForm.getRawValue();
 
-    if (this.isEditMode && (!formValue.enabledAgents || formValue.enabledAgents.length === 0)) {
-      this.errorMessage = 'Select at least one enabled agent before updating this client.';
-      this.isSubmitting = false;
-      return;
-    }
-
     const voiceConcurrency = Number(formValue.voiceConcurrency);
     if (
       !Number.isFinite(voiceConcurrency) ||
@@ -632,58 +708,86 @@ export class ClientFormComponent implements OnInit {
     }
 
     try {
-      if (this.isEditMode) {
-        await firstValueFrom(
-          this.http.put(
-            `${this.apiBase}/clients/${this.clientCode}`,
-            {
-              clientName: formValue.clientName,
-              enabledAgents: formValue.enabledAgents,
-              dataResidency: formValue.dataResidency,
-              voiceConcurrency
-            },
-            {
-              headers: new HttpHeaders({
-                Authorization: `Bearer ${accessToken}`
-              })
-            }
-          )
-        );
-
-        this.successMessage = 'Client updated successfully.';
-      } else {
-        await firstValueFrom(
-          this.http.post(
-            `${this.apiBase}/clients`,
-            {
-              clientName: formValue.clientName,
-              dataResidency: formValue.dataResidency,
-              voiceConcurrency
-            },
-            {
-              headers: new HttpHeaders({
-                Authorization: `Bearer ${accessToken}`
-              })
-            }
-          )
-        );
-
-        this.successMessage = 'Client created successfully.';
+      const pricingErr = this.validatePricingRulesForBilling();
+      if (pricingErr) {
+        this.pricingErrorMessage = pricingErr;
+        return;
       }
+
+      const createRes = await firstValueFrom(
+        this.http.post<unknown>(
+          `${this.apiBase}/clients`,
+          {
+            clientName: formValue.clientName,
+            dataResidency: formValue.dataResidency,
+            voiceConcurrency
+          },
+          {
+            headers: new HttpHeaders({
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            })
+          }
+        )
+      );
+
+      const newCode = this.extractClientCodeFromCreateResponse(createRes);
+      if (!newCode) {
+        await this.router.navigate(['/clients'], {
+          state: {
+            listFlashMessage:
+              'Client was created, but the server did not return a client code, so pricing was not saved. Open the client from the list and use Edit to set billing.'
+          }
+        });
+        return;
+      }
+
+      try {
+        await this.putBillingBilling(
+          this.buildBillingPutBody(newCode),
+          accessToken
+        );
+      } catch (billingErr) {
+        console.error(billingErr);
+        const detail =
+          billingErr instanceof HttpErrorResponse
+            ? (typeof billingErr.error?.message === 'string'
+                ? billingErr.error.message
+                : billingErr.statusText)
+            : 'Unknown error';
+        await this.router.navigate(
+          ['/clients', newCode, 'edit'],
+          {
+            state: {
+              client: {
+                clientName: formValue.clientName,
+                clientCode: newCode,
+                enabledAgents: [],
+                status: 'Active',
+                owner: '',
+                createdOn: ''
+              } as ClientRow,
+              flashPricingError: `Client was created, but saving pricing failed (${detail}). Open the client, click Edit, then Save to set billing.`
+            }
+          }
+        );
+        return;
+      }
+
+      this.successMessage =
+        'Client created successfully. Pricing and billing were saved.';
 
       await this.router.navigate(['/clients']);
     } catch (error) {
       console.error(error);
-      this.errorMessage = this.isEditMode
-        ? 'Unable to update client right now.'
-        : 'Unable to create client right now.';
+      this.errorMessage = 'Unable to create client right now.';
     } finally {
       this.isSubmitting = false;
     }
   }
 
   async addUser(): Promise<void> {
-    if (this.clientPageViewOnly) {
+    if (!this.canManageClientUsers) {
       return;
     }
     if (!this.newUserEmail.trim() || !this.newUserPassword.trim()) {
@@ -738,7 +842,7 @@ export class ClientFormComponent implements OnInit {
   }
 
   openAddUserModal(): void {
-    if (this.clientPageViewOnly) return;
+    if (!this.canManageClientUsers) return;
     this.closeDeleteUserModal();
     this.userErrorMessage = '';
     this.userSuccessMessage = '';
@@ -754,7 +858,7 @@ export class ClientFormComponent implements OnInit {
   }
 
   openDeleteUserModal(): void {
-    if (this.clientPageViewOnly) return;
+    if (!this.canManageClientUsers) return;
     this.showAddUserModal = false;
     this.showEditUserModal = false;
     this.userErrorMessage = '';
@@ -772,7 +876,7 @@ export class ClientFormComponent implements OnInit {
   }
 
   async deleteUser(): Promise<void> {
-    if (this.clientPageViewOnly) return;
+    if (!this.canManageClientUsers) return;
     const email = this.deleteUserEmail.trim();
     if (!email) {
       this.deleteUserErrorMessage = 'Select a user to remove.';
@@ -827,7 +931,7 @@ export class ClientFormComponent implements OnInit {
   }
 
   openEditUserModal(u: { id: string; email: string; role: string }): void {
-    if (this.clientPageViewOnly) return;
+    if (!this.canManageClientUsers) return;
     this.closeDeleteUserModal();
     this.userErrorMessage = '';
     this.editUserErrorMessage = '';
@@ -854,7 +958,7 @@ export class ClientFormComponent implements OnInit {
   }
 
   async updateUser(): Promise<void> {
-    if (this.clientPageViewOnly) return;
+    if (!this.canManageClientUsers) return;
     if (!this.editUserId.trim()) {
       this.editUserErrorMessage = 'User id is missing. Close this dialog and try again.';
       return;
@@ -945,7 +1049,7 @@ export class ClientFormComponent implements OnInit {
   }
 
   addPricingRule(): void {
-    if (this.clientPageViewOnly) return;
+    if (this.pageFieldsReadOnly) return;
     this.pricingDd = null;
     this.pricingRules.push({
       featureCode: 'chat',
@@ -956,7 +1060,7 @@ export class ClientFormComponent implements OnInit {
   }
 
   removePricingRule(index: number): void {
-    if (this.clientPageViewOnly) return;
+    if (this.pageFieldsReadOnly) return;
     this.pricingRules.splice(index, 1);
     if (this.pricingDd?.row === index) {
       this.pricingDd = null;
@@ -965,51 +1069,86 @@ export class ClientFormComponent implements OnInit {
     }
   }
 
-  async savePricing(): Promise<void> {
-    if (this.clientPageViewOnly) {
-      return;
-    }
-    const accessToken = localStorage.getItem('accessToken');
-    if (!accessToken) {
-      this.pricingErrorMessage = 'Session expired. Please log in again.';
-      return;
-    }
-
-    const customPricing: Record<string, Record<string, { creditPerUnit: number; unit?: string; rounding?: string; intervalSeconds?: number; minimumSeconds?: number }>> = {};
+  /** Same payload shape as `PUT …/billing/billing` for create + edit flows. */
+  private validatePricingRulesForBilling(): string | null {
     for (const row of this.pricingRules) {
       const creditPerUnit = Number(row.creditPerUnit);
       if (!Number.isFinite(creditPerUnit) || creditPerUnit <= 0) {
-        this.pricingErrorMessage = `Credit per unit must be a positive number for ${row.featureCode} / ${row.unitType}.`;
-        return;
+        return `Credit per unit must be a positive number for ${row.featureCode} / ${row.unitType}.`;
       }
       if (!row.featureCode?.trim() || !row.unitType?.trim()) {
-        this.pricingErrorMessage = 'Feature and unit type are required for each rule.';
-        return;
+        return 'Feature and unit type are required for each rule.';
       }
+    }
+    return null;
+  }
+
+  private buildBillingPutBody(clientCode: string): {
+    clientCode: string;
+    tier: string;
+    allowNegativeBalance: boolean;
+    customPricing: Record<
+      string,
+      Record<
+        string,
+        {
+          creditPerUnit: number;
+          unit?: string;
+          rounding?: string;
+          intervalSeconds?: number;
+          minimumSeconds?: number;
+        }
+      >
+    >;
+    baseCreditUsage: { prompt_builder: boolean };
+  } {
+    const customPricing: Record<
+      string,
+      Record<
+        string,
+        {
+          creditPerUnit: number;
+          unit?: string;
+          rounding?: string;
+          intervalSeconds?: number;
+          minimumSeconds?: number;
+        }
+      >
+    > = {};
+    for (const row of this.pricingRules) {
+      const creditPerUnit = Number(row.creditPerUnit);
       const apiFeatureKey = this.pricingFeatureKeyForApi(row.featureCode);
       if (!customPricing[apiFeatureKey]) customPricing[apiFeatureKey] = {};
-      const rule: { creditPerUnit: number; unit?: string; rounding?: string; intervalSeconds?: number; minimumSeconds?: number } = {
+      const rule: {
+        creditPerUnit: number;
+        unit?: string;
+        rounding?: string;
+        intervalSeconds?: number;
+        minimumSeconds?: number;
+      } = {
         creditPerUnit,
         rounding: row.rounding || 'ceil'
       };
-      // Only voice uses interval/min; chat, onboarding, audit do not
       if (row.featureCode === 'voice') {
-        if (row.intervalSeconds != null && Number.isFinite(Number(row.intervalSeconds)) && Number(row.intervalSeconds) > 0) {
+        if (
+          row.intervalSeconds != null &&
+          Number.isFinite(Number(row.intervalSeconds)) &&
+          Number(row.intervalSeconds) > 0
+        ) {
           rule.intervalSeconds = Number(row.intervalSeconds);
         }
-        if (row.minimumSeconds != null && Number.isFinite(Number(row.minimumSeconds)) && Number(row.minimumSeconds) >= 0) {
+        if (
+          row.minimumSeconds != null &&
+          Number.isFinite(Number(row.minimumSeconds)) &&
+          Number(row.minimumSeconds) >= 0
+        ) {
           rule.minimumSeconds = Number(row.minimumSeconds);
         }
       }
       customPricing[apiFeatureKey][row.unitType] = rule;
     }
-
-    this.isSavingPricing = true;
-    this.pricingErrorMessage = '';
-    this.pricingSuccessMessage = '';
-
-    const body = {
-      clientCode: this.clientCode,
+    return {
+      clientCode,
       tier: this.billingTier,
       allowNegativeBalance: this.allowNegativeBalance,
       customPricing,
@@ -1017,19 +1156,72 @@ export class ClientFormComponent implements OnInit {
         prompt_builder: this.baseCreditUsagePromptBuilder
       }
     };
+  }
+
+  private extractClientCodeFromCreateResponse(res: unknown): string | null {
+    const r = res as Record<string, unknown> | null;
+    if (!r || typeof r !== 'object') {
+      return null;
+    }
+    const client = r['client'] as Record<string, unknown> | undefined;
+    const fromNested =
+      client && typeof client === 'object'
+        ? (client['clientCode'] ?? client['cod'] ?? client['code'])
+        : undefined;
+    const direct = r['clientCode'] ?? r['cod'] ?? r['code'];
+    const raw = (fromNested ?? direct) as unknown;
+    const s = typeof raw === 'string' ? raw.trim() : String(raw ?? '').trim();
+    return s && s !== 'undefined' ? s : null;
+  }
+
+  private async putBillingBilling(
+    body: ReturnType<ClientFormComponent['buildBillingPutBody']>,
+    accessToken: string
+  ): Promise<{
+    message?: string;
+    billing?: Record<string, unknown>;
+  }> {
+    return await firstValueFrom(
+      this.http.put<{
+        message?: string;
+        billing?: Record<string, unknown>;
+      }>(`${this.apiBase}/billing/billing`, body, {
+        headers: new HttpHeaders({
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        })
+      })
+    );
+  }
+
+  async savePricing(): Promise<void> {
+    if (this.pageFieldsReadOnly) {
+      return;
+    }
+    const accessToken = localStorage.getItem('accessToken');
+    if (!accessToken) {
+      this.pricingErrorMessage = 'Session expired. Please log in again.';
+      return;
+    }
+    if (!this.clientCode?.trim()) {
+      this.pricingErrorMessage = 'Missing client code.';
+      return;
+    }
+
+    const pricingErr = this.validatePricingRulesForBilling();
+    if (pricingErr) {
+      this.pricingErrorMessage = pricingErr;
+      return;
+    }
+
+    this.isSavingPricing = true;
+    this.pricingErrorMessage = '';
+    this.pricingSuccessMessage = '';
+
+    const body = this.buildBillingPutBody(this.clientCode.trim());
 
     try {
-      const res = await firstValueFrom(
-        this.http.put<{
-          message?: string;
-          billing?: Record<string, unknown>;
-        }>(`${this.apiBase}/billing/billing`, body, {
-          headers: new HttpHeaders({
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          })
-        })
-      );
+      const res = await this.putBillingBilling(body, accessToken);
       this.pricingSuccessMessage =
         res?.message?.trim() || 'Billing updated successfully.';
       if (res?.billing && typeof res.billing === 'object') {
@@ -1039,10 +1231,181 @@ export class ClientFormComponent implements OnInit {
       }
     } catch (error) {
       console.error(error);
-      this.pricingErrorMessage = (error as any)?.error?.message ?? 'Unable to save pricing right now.';
+      this.pricingErrorMessage =
+        (error as any)?.error?.message ?? 'Unable to save pricing right now.';
     } finally {
       this.isSavingPricing = false;
     }
+  }
+
+  private captureEditPageSnapshot(): void {
+    const raw = this.clientForm.getRawValue();
+    this.editPageCancelSnapshot = {
+      clientName: String(raw.clientName ?? ''),
+      enabledAgents: [...((raw.enabledAgents as string[]) ?? [])],
+      dataResidency: String(raw.dataResidency ?? ''),
+      voiceConcurrency: Number(raw.voiceConcurrency),
+      billingTier: this.billingTier,
+      allowNegativeBalance: this.allowNegativeBalance,
+      baseCreditUsagePromptBuilder: this.baseCreditUsagePromptBuilder,
+      pricingRules: this.pricingRules.map((r) => ({ ...r }))
+    };
+  }
+
+  private restoreEditPageSnapshot(): void {
+    const s = this.editPageCancelSnapshot;
+    if (!s) {
+      return;
+    }
+    this.clientForm.patchValue({
+      clientName: s.clientName,
+      enabledAgents: s.enabledAgents,
+      dataResidency: s.dataResidency,
+      voiceConcurrency: s.voiceConcurrency
+    });
+    this.billingTier = s.billingTier;
+    this.allowNegativeBalance = s.allowNegativeBalance;
+    this.baseCreditUsagePromptBuilder = s.baseCreditUsagePromptBuilder;
+    this.pricingRules = s.pricingRules.map((r) => ({ ...r }));
+    this.editPageCancelSnapshot = null;
+  }
+
+  startPageEdit(): void {
+    if (!this.isEditMode || this.clientPageViewOnly) {
+      return;
+    }
+    this.captureEditPageSnapshot();
+    this.pageEditUnlocked = true;
+    this.errorMessage = '';
+    this.successMessage = '';
+    this.pricingErrorMessage = '';
+    this.pricingSuccessMessage = '';
+    this.dataResidencyMenuOpen = false;
+    this.billingTierMenuOpen = false;
+    this.pricingDd = null;
+  }
+
+  cancelPageEdit(): void {
+    if (!this.pageEditUnlocked || this.clientPageViewOnly || this.isSavingEntirePage) {
+      return;
+    }
+    this.restoreEditPageSnapshot();
+    this.pageEditUnlocked = false;
+    this.errorMessage = '';
+    this.successMessage = '';
+    this.pricingErrorMessage = '';
+    this.pricingSuccessMessage = '';
+    this.dataResidencyMenuOpen = false;
+    this.billingTierMenuOpen = false;
+    this.pricingDd = null;
+    this.closeAddUserModal();
+    this.closeDeleteUserModal();
+    this.closeEditUserModal();
+  }
+
+  async saveEntireEditPage(): Promise<void> {
+    if (!this.isEditMode || this.clientPageViewOnly || !this.pageEditUnlocked) {
+      return;
+    }
+    if (this.clientForm.invalid) {
+      this.clientForm.markAllAsTouched();
+      return;
+    }
+
+    const accessToken = localStorage.getItem('accessToken');
+    if (!accessToken) {
+      this.errorMessage = 'Session expired. Please log in again.';
+      return;
+    }
+
+    const formValue = this.clientForm.getRawValue();
+    if (!formValue.enabledAgents || formValue.enabledAgents.length === 0) {
+      this.errorMessage = 'Select at least one enabled agent before saving.';
+      return;
+    }
+
+    const voiceConcurrency = Number(formValue.voiceConcurrency);
+    if (
+      !Number.isFinite(voiceConcurrency) ||
+      !Number.isInteger(voiceConcurrency) ||
+      voiceConcurrency < 1
+    ) {
+      this.errorMessage = 'Voice concurrency must be a positive whole number.';
+      return;
+    }
+
+    const pricingErr = this.validatePricingRulesForBilling();
+    if (pricingErr) {
+      this.pricingErrorMessage = pricingErr;
+      return;
+    }
+
+    this.isSavingEntirePage = true;
+    this.errorMessage = '';
+    this.successMessage = '';
+    this.pricingErrorMessage = '';
+    this.pricingSuccessMessage = '';
+
+    try {
+      await firstValueFrom(
+        this.http.put(
+          `${this.apiBase}/clients/${this.clientCode}`,
+          {
+            clientName: formValue.clientName,
+            enabledAgents: formValue.enabledAgents,
+            dataResidency: formValue.dataResidency,
+            voiceConcurrency
+          },
+          {
+            headers: new HttpHeaders({
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            })
+          }
+        )
+      );
+
+      const billingRes = await this.putBillingBilling(
+        this.buildBillingPutBody(this.clientCode.trim()),
+        accessToken
+      );
+
+      if (billingRes?.billing && typeof billingRes.billing === 'object') {
+        this.applyBillingFromClient({
+          billing: billingRes.billing
+        } as unknown as ClientRow);
+      }
+
+      this.pageEditUnlocked = false;
+      this.editPageCancelSnapshot = null;
+      this.closeAddUserModal();
+      this.closeDeleteUserModal();
+      this.closeEditUserModal();
+      this.successMessage = 'Client and pricing saved successfully.';
+      const billingMsg = billingRes?.message?.trim();
+      if (billingMsg) {
+        this.pricingSuccessMessage = billingMsg;
+      }
+    } catch (error) {
+      console.error(error);
+      const msg =
+        error instanceof HttpErrorResponse
+          ? (typeof error.error?.message === 'string'
+              ? error.error.message
+              : error.statusText)
+          : 'Unable to save. Check your connection and try again.';
+      this.errorMessage = msg;
+    } finally {
+      this.isSavingEntirePage = false;
+    }
+  }
+
+  onClientFormSubmit(event: Event): void {
+    event.preventDefault();
+    if (this.clientPageViewOnly || this.isEditMode) {
+      return;
+    }
+    void this.onSubmit();
   }
 
   goBack(): void {

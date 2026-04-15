@@ -4,12 +4,7 @@ import {
   HttpHeaders,
   HttpParams
 } from '@angular/common/http';
-import {
-  ChangeDetectorRef,
-  Component,
-  OnDestroy,
-  OnInit
-} from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
@@ -44,11 +39,8 @@ export interface ClientRow {
   templateUrl: './clients.component.html',
   styleUrl: './clients.component.scss'
 })
-export class ClientsComponent implements OnInit, OnDestroy {
+export class ClientsComponent implements OnInit {
   clients: ClientRow[] = [];
-
-  /** `edit`: full directory controls; `view`: read-only list (no add, links, or row actions). */
-  directoryUiMode: 'view' | 'edit' = 'view';
 
   selectedTab: 'all' | 'active' | 'archived' = 'active';
   /** Filters the current tab’s rows by name, code, agents, status. */
@@ -66,10 +58,8 @@ export class ClientsComponent implements OnInit, OnDestroy {
    */
   private readonly locallyArchivedClients = new Map<string, ClientRow>();
   private static readonly ARCHIVED_STORAGE_KEY = 'kartaAdminArchivedClientRows';
-  /** Brief “Copied” hint next to the client code that was copied */
-  copiedClientCode: string | null = null;
-  private copyFeedbackClearId: ReturnType<typeof setTimeout> | null = null;
-
+  /** Shown in the action banner after redirect from create when client code is missing from POST response. */
+  private pendingListRouteFlash = '';
   usersPreviewOpen = false;
   usersPreviewLoading = false;
   usersPreviewError = '';
@@ -82,17 +72,17 @@ export class ClientsComponent implements OnInit, OnDestroy {
     private http: HttpClient,
     private router: Router,
     private cdr: ChangeDetectorRef
-  ) {}
+  ) {
+    const nav = this.router.getCurrentNavigation();
+    const flash = nav?.extras?.state?.['listFlashMessage'];
+    if (typeof flash === 'string' && flash.trim()) {
+      this.pendingListRouteFlash = flash.trim();
+    }
+  }
 
   ngOnInit(): void {
     this.hydrateLocallyArchivedFromStorage();
     void this.loadClients();
-  }
-
-  ngOnDestroy(): void {
-    if (this.copyFeedbackClearId != null) {
-      clearTimeout(this.copyFeedbackClearId);
-    }
   }
 
   get totalClients(): number {
@@ -127,15 +117,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
     return byTab.filter((client) => this.clientMatchesSearch(client, q));
   }
 
-  setDirectoryUiMode(mode: 'view' | 'edit'): void {
-    this.directoryUiMode = mode;
-  }
-
-  toggleDirectoryUiMode(): void {
-    this.directoryUiMode = this.directoryUiMode === 'view' ? 'edit' : 'view';
-  }
-
-  /** Clickable client name for non-archived rows (view → read-only client; edit → full edit). */
+  /** Clickable client name for non-archived rows (opens Update Client). */
   showClientNameLink(client: ClientRow): boolean {
     return client.status !== 'Archived';
   }
@@ -146,24 +128,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
       return Math.floor(n);
     }
     return 0;
-  }
-
-  onClientNameClick(client: ClientRow): void {
-    if (client.status === 'Archived') {
-      return;
-    }
-    if (this.directoryUiMode === 'view') {
-      this.openClientReadOnly(client);
-    } else {
-      this.editClient(client);
-    }
-  }
-
-  openClientReadOnly(client: ClientRow): void {
-    void this.router.navigate(['/clients', client.clientCode, 'edit'], {
-      state: { client, viewOnly: true },
-      queryParams: { view: '1' }
-    });
   }
 
   closeUsersPreview(): void {
@@ -294,6 +258,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
     void this.router.navigate(['/clients/new']);
   }
 
+  /** Full Update Client page (same as row **View** and client name). */
   editClient(client: ClientRow): void {
     void this.router.navigate(
       ['/clients', client.clientCode, 'edit'],
@@ -307,29 +272,16 @@ export class ClientsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const done = (): void => {
-      this.copiedClientCode = text;
-      this.cdr.markForCheck();
-      if (this.copyFeedbackClearId != null) {
-        clearTimeout(this.copyFeedbackClearId);
-      }
-      this.copyFeedbackClearId = setTimeout(() => {
-        this.copiedClientCode = null;
-        this.copyFeedbackClearId = null;
-        this.cdr.markForCheck();
-      }, 2000);
-    };
-
     if (navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(text).then(done).catch(() => {
-        this.fallbackCopyTextToClipboard(text, done);
+      void navigator.clipboard.writeText(text).catch(() => {
+        this.fallbackCopyTextToClipboard(text);
       });
       return;
     }
-    this.fallbackCopyTextToClipboard(text, done);
+    this.fallbackCopyTextToClipboard(text);
   }
 
-  private fallbackCopyTextToClipboard(text: string, onDone: () => void): void {
+  private fallbackCopyTextToClipboard(text: string): void {
     const ta = document.createElement('textarea');
     ta.value = text;
     ta.setAttribute('readonly', '');
@@ -339,7 +291,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
     ta.select();
     try {
       document.execCommand('copy');
-      onDone();
     } catch {
       this.actionMessage = 'Could not copy client code.';
     }
@@ -513,9 +464,14 @@ export class ClientsComponent implements OnInit, OnDestroy {
       this.clients = this.mergeApiRowsWithLocallyArchived(rows);
       this.clampPageIndex();
       await this.hydrateUserCountsFromApi();
-      this.actionMessage = this.clients.length
-        ? 'Clients loaded successfully.'
-        : 'No clients found yet. Add Client flow will be the next page we create.';
+      if (this.pendingListRouteFlash) {
+        this.actionMessage = this.pendingListRouteFlash;
+        this.pendingListRouteFlash = '';
+      } else {
+        this.actionMessage = this.clients.length
+          ? 'Clients loaded successfully.'
+          : 'No clients found yet. Add Client flow will be the next page we create.';
+      }
     } catch (error) {
       console.error('Failed to load clients', error);
       this.clients = [];
