@@ -31,6 +31,9 @@ export class ClientFormComponent implements OnInit {
   @ViewChild('editUserRoleDropdownRoot')
   editUserRoleDropdownRoot?: ElementRef<HTMLElement>;
 
+  @ViewChild('deleteUserEmailDropdownRoot')
+  deleteUserEmailDropdownRoot?: ElementRef<HTMLElement>;
+
   /** Custom menu: native select dropdown is OS-drawn (width/corners misalign). */
   dataResidencyMenuOpen = false;
 
@@ -49,6 +52,12 @@ export class ClientFormComponent implements OnInit {
   isLoadingUsers = false;
   showAddUserModal = false;
 
+  showDeleteUserModal = false;
+  deleteUserEmail = '';
+  deleteUserEmailMenuOpen = false;
+  deleteUserErrorMessage = '';
+  isDeletingUser = false;
+
   showEditUserModal = false;
   editUserEmail = '';
   editUserRole = '';
@@ -64,12 +73,14 @@ export class ClientFormComponent implements OnInit {
     { value: 'admin', label: 'Admin' }
   ];
 
-  // Pricing: saved via PUT /admin/clients/:clientCode/billing (tier, allowNegativeBalance, customPricing)
+  // Pricing: PUT /admin/billing/billing — body: clientCode, tier, allowNegativeBalance, customPricing, baseCreditUsage
   pricingErrorMessage = '';
   pricingSuccessMessage = '';
   isSavingPricing = false;
   billingTier = 'basic';
   allowNegativeBalance = false;
+  /** Maps to `baseCreditUsage.prompt_builder` on the billing API */
+  baseCreditUsagePromptBuilder = false;
   billingTierMenuOpen = false;
   /** Which pricing rule custom dropdown is open (feature / unit / rounding). */
   pricingDd: { row: number; field: 'feature' | 'unit' | 'rounding' } | null =
@@ -184,6 +195,11 @@ export class ClientFormComponent implements OnInit {
         this.editUserRoleMenuOpen = false;
       }
     }
+    if (this.deleteUserEmailMenuOpen) {
+      if (!this.deleteUserEmailDropdownRoot?.nativeElement?.contains(t)) {
+        this.deleteUserEmailMenuOpen = false;
+      }
+    }
     const el = ev.target as HTMLElement;
     if (this.billingTierMenuOpen && !el.closest('.billing-tier-dd')) {
       this.billingTierMenuOpen = false;
@@ -197,8 +213,12 @@ export class ClientFormComponent implements OnInit {
   onEscape(): void {
     this.dataResidencyMenuOpen = false;
     this.editUserRoleMenuOpen = false;
+    this.deleteUserEmailMenuOpen = false;
     this.billingTierMenuOpen = false;
     this.pricingDd = null;
+    if (this.showDeleteUserModal) {
+      this.closeDeleteUserModal();
+    }
   }
 
   toggleDataResidencyMenu(ev: MouseEvent): void {
@@ -239,6 +259,25 @@ export class ClientFormComponent implements OnInit {
       (this.editUserRole ?? '').trim().toLowerCase() ===
       value.trim().toLowerCase()
     );
+  }
+
+  get deleteUserEmailDisplayLabel(): string {
+    const e = (this.deleteUserEmail ?? '').trim();
+    return e || 'Select a user';
+  }
+
+  toggleDeleteUserEmailMenu(ev: MouseEvent): void {
+    ev.stopPropagation();
+    this.deleteUserEmailMenuOpen = !this.deleteUserEmailMenuOpen;
+  }
+
+  selectDeleteUserEmail(email: string): void {
+    this.deleteUserEmail = email;
+    this.deleteUserEmailMenuOpen = false;
+  }
+
+  isDeleteUserEmailSelected(email: string): boolean {
+    return (this.deleteUserEmail ?? '').trim() === email.trim();
   }
 
   get billingTierDisplayLabel(): string {
@@ -494,6 +533,19 @@ export class ClientFormComponent implements OnInit {
     }
   }
 
+  /**
+   * UI “Agent Builder” uses feature code `agent_builder`; billing `customPricing` uses `prompt_builder`.
+   */
+  private pricingFeatureKeyForApi(uiFeatureCode: string): string {
+    const c = (uiFeatureCode ?? '').trim();
+    return c === 'agent_builder' ? 'prompt_builder' : c;
+  }
+
+  private pricingFeatureKeyFromApi(apiFeatureKey: string): string {
+    const c = (apiFeatureKey ?? '').trim();
+    return c === 'prompt_builder' ? 'agent_builder' : c;
+  }
+
   private applyBillingFromClient(client: ClientRow): void {
     const billing = (client as any)?.billing ?? (client as any)?.bi;
     if (!billing) {
@@ -502,6 +554,12 @@ export class ClientFormComponent implements OnInit {
     }
     this.billingTier = (billing.tier && billing.tier !== 'free') ? billing.tier : 'basic';
     this.allowNegativeBalance = billing.allowNegativeBalance === true;
+    const bcu = billing.baseCreditUsage;
+    if (bcu && typeof bcu === 'object' && typeof bcu.prompt_builder === 'boolean') {
+      this.baseCreditUsagePromptBuilder = bcu.prompt_builder;
+    } else {
+      this.baseCreditUsagePromptBuilder = false;
+    }
     const cp = billing.customPricing;
     if (cp && typeof cp === 'object') {
       this.pricingRules = [];
@@ -510,7 +568,7 @@ export class ClientFormComponent implements OnInit {
         for (const [unitType, rule] of Object.entries(unitMap)) {
           if (!rule || typeof rule !== 'object' || typeof rule.creditPerUnit !== 'number') continue;
           this.pricingRules.push({
-            featureCode,
+            featureCode: this.pricingFeatureKeyFromApi(featureCode),
             unitType,
             creditPerUnit: rule.creditPerUnit,
             rounding: rule.rounding ?? 'ceil',
@@ -661,6 +719,7 @@ export class ClientFormComponent implements OnInit {
   }
 
   openAddUserModal(): void {
+    this.closeDeleteUserModal();
     this.userErrorMessage = '';
     this.userSuccessMessage = '';
     this.showAddUserModal = true;
@@ -674,7 +733,68 @@ export class ClientFormComponent implements OnInit {
     this.userSuccessMessage = '';
   }
 
+  openDeleteUserModal(): void {
+    this.showAddUserModal = false;
+    this.showEditUserModal = false;
+    this.deleteUserErrorMessage = '';
+    this.deleteUserEmailMenuOpen = false;
+    this.deleteUserEmail = this.clientUsers[0]?.email ?? '';
+    this.showDeleteUserModal = true;
+  }
+
+  closeDeleteUserModal(): void {
+    this.showDeleteUserModal = false;
+    this.deleteUserEmail = '';
+    this.deleteUserEmailMenuOpen = false;
+    this.deleteUserErrorMessage = '';
+  }
+
+  async deleteUser(): Promise<void> {
+    const email = this.deleteUserEmail.trim();
+    if (!email) {
+      this.deleteUserErrorMessage = 'Select a user to remove.';
+      return;
+    }
+    if (
+      !window.confirm(
+        `Remove ${email} from this client? They will lose access.`
+      )
+    ) {
+      return;
+    }
+
+    this.isDeletingUser = true;
+    this.deleteUserErrorMessage = '';
+
+    try {
+      const accessToken = localStorage.getItem('accessToken');
+      if (!accessToken) {
+        this.deleteUserErrorMessage = 'Session expired. Please log in again.';
+        return;
+      }
+
+      await firstValueFrom(
+        this.http.delete(
+          `${this.apiBase}/clients/${this.clientCode}/users/${encodeURIComponent(email)}`,
+          {
+            headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` })
+          }
+        )
+      );
+
+      this.closeDeleteUserModal();
+      await this.loadClientUsers();
+    } catch (error) {
+      console.error(error);
+      this.deleteUserErrorMessage =
+        (error as any)?.error?.message ?? 'Unable to delete user right now.';
+    } finally {
+      this.isDeletingUser = false;
+    }
+  }
+
   openEditUserModal(u: { email: string; role: string }): void {
+    this.closeDeleteUserModal();
     this.editUserErrorMessage = '';
     this.editUserEmail = u.email;
     const role = (u.role ?? '').trim() || 'member';
@@ -807,7 +927,8 @@ export class ClientFormComponent implements OnInit {
         this.pricingErrorMessage = 'Feature and unit type are required for each rule.';
         return;
       }
-      if (!customPricing[row.featureCode]) customPricing[row.featureCode] = {};
+      const apiFeatureKey = this.pricingFeatureKeyForApi(row.featureCode);
+      if (!customPricing[apiFeatureKey]) customPricing[apiFeatureKey] = {};
       const rule: { creditPerUnit: number; unit?: string; rounding?: string; intervalSeconds?: number; minimumSeconds?: number } = {
         creditPerUnit,
         rounding: row.rounding || 'ceil'
@@ -821,31 +942,42 @@ export class ClientFormComponent implements OnInit {
           rule.minimumSeconds = Number(row.minimumSeconds);
         }
       }
-      customPricing[row.featureCode][row.unitType] = rule;
+      customPricing[apiFeatureKey][row.unitType] = rule;
     }
 
     this.isSavingPricing = true;
     this.pricingErrorMessage = '';
     this.pricingSuccessMessage = '';
 
+    const body = {
+      clientCode: this.clientCode,
+      tier: this.billingTier,
+      allowNegativeBalance: this.allowNegativeBalance,
+      customPricing,
+      baseCreditUsage: {
+        prompt_builder: this.baseCreditUsagePromptBuilder
+      }
+    };
+
     try {
-      await firstValueFrom(
-        this.http.put(
-          `${this.apiBase}/clients/${this.clientCode}/billing`,
-          {
-            tier: this.billingTier,
-            allowNegativeBalance: this.allowNegativeBalance,
-            ...(Object.keys(customPricing).length > 0 ? { customPricing } : {})
-          },
-          {
-            headers: new HttpHeaders({
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            })
-          }
-        )
+      const res = await firstValueFrom(
+        this.http.put<{
+          message?: string;
+          billing?: Record<string, unknown>;
+        }>(`${this.apiBase}/billing/billing`, body, {
+          headers: new HttpHeaders({
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          })
+        })
       );
-      this.pricingSuccessMessage = 'Pricing saved successfully.';
+      this.pricingSuccessMessage =
+        res?.message?.trim() || 'Billing updated successfully.';
+      if (res?.billing && typeof res.billing === 'object') {
+        this.applyBillingFromClient({
+          billing: res.billing
+        } as unknown as ClientRow);
+      }
     } catch (error) {
       console.error(error);
       this.pricingErrorMessage = (error as any)?.error?.message ?? 'Unable to save pricing right now.';

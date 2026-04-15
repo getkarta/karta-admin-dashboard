@@ -137,7 +137,16 @@
             <h2 class="card__title">Users</h2>
             <p class="card__description">Members under this client.</p>
           </div>
-          <button type="button" class="button" (click)="openAddUserModal()">Add User</button>
+          <div class="users-section-actions">
+            <button type="button" class="button" (click)="openAddUserModal()">Add User</button>
+            <button
+              type="button"
+              class="button"
+              [disabled]="!isLoadingUsers && clientUsers.length === 0"
+              (click)="openDeleteUserModal()">
+              Delete User
+            </button>
+          </div>
         </div>
         <div class="users-list-wrap" *ngIf="clientUsers.length > 0 || isLoadingUsers">
           <p *ngIf="isLoadingUsers">Loading users...</p>
@@ -203,6 +212,65 @@
         <button type="button" class="button button-transparent" (click)="closeAddUserModal()">Cancel</button>
         <button type="button" class="button" [disabled]="isAddingUser" (click)="addUser()">
           {{ isAddingUser ? 'Adding...' : 'Submit' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete User modal -->
+  <div class="modal-overlay" *ngIf="showDeleteUserModal" (click)="closeDeleteUserModal()">
+    <div class="modal-box" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3 class="modal-title">Delete User</h3>
+        <button type="button" class="modal-close" aria-label="Close" (click)="closeDeleteUserModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group form-group--delete-user-email">
+          <span class="form-label" id="delete-user-email-label">User email</span>
+          <div
+            class="residency-dd"
+            [class.residency-dd--open]="deleteUserEmailMenuOpen"
+            #deleteUserEmailDropdownRoot>
+            <button
+              type="button"
+              class="residency-dd__trigger"
+              id="delete-user-email-trigger"
+              (click)="toggleDeleteUserEmailMenu($event)"
+              [attr.aria-expanded]="deleteUserEmailMenuOpen"
+              aria-haspopup="listbox"
+              aria-controls="delete-user-email-listbox"
+              aria-labelledby="delete-user-email-label">
+              <span class="residency-dd__value">{{ deleteUserEmailDisplayLabel }}</span>
+              <span class="residency-dd__chevron" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+            </button>
+            <ul
+              *ngIf="deleteUserEmailMenuOpen"
+              class="residency-dd__list"
+              id="delete-user-email-listbox"
+              role="listbox"
+              aria-labelledby="delete-user-email-label">
+              <li
+                *ngFor="let u of clientUsers"
+                class="residency-dd__option"
+                [class.residency-dd__option--selected]="isDeleteUserEmailSelected(u.email)"
+                role="option"
+                [attr.aria-selected]="isDeleteUserEmailSelected(u.email)"
+                (click)="selectDeleteUserEmail(u.email)">
+                {{ u.email }}
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div class="message message--error" *ngIf="deleteUserErrorMessage">{{ deleteUserErrorMessage }}</div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="button button-transparent" (click)="closeDeleteUserModal()">Cancel</button>
+        <button type="button" class="button" [disabled]="isDeletingUser" (click)="deleteUser()">
+          {{ isDeletingUser ? 'Deleting...' : 'Delete user' }}
         </button>
       </div>
     </div>
@@ -335,11 +403,23 @@
                 <span>Allow negative balance</span>
               </label>
             </div>
+            <div class="form-group form-group--checkbox pricing-base-credit-prompt-builder">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  [(ngModel)]="baseCreditUsagePromptBuilder"
+                  [ngModelOptions]="{ standalone: true }"
+                  class="checkbox-input" />
+                <span>Prompt builder base credit usage</span>
+              </label>
+            </div>
           </div>
 
           <div class="custom-pricing-block">
             <h3 class="block-title">Custom pricing (credits per unit)</h3>
-            <p class="field-help">Add rules for feature + unit type. Empty list keeps existing custom pricing unchanged when saving.</p>
+            <p class="field-help">
+              Add rules for feature + unit type. Saving sends them as custom pricing on the billing API (no rows means an empty map).
+            </p>
             <div class="pricing-rules-wrap">
               <div class="pricing-rule-header">
                 <span>Feature</span>

@@ -19,6 +19,8 @@ export interface BillingInfo {
   tier?: string;
   allowNegativeBalance?: boolean;
   customPricing?: Record<string, Record<string, { creditPerUnit: number; unit?: string; rounding?: string; intervalSeconds?: number; minimumSeconds?: number }>>;
+  /** e.g. `{ prompt_builder: true }` — whether base credits apply for that product surface */
+  baseCreditUsage?: Record<string, boolean>;
 }
 
 export interface ClientRow {
@@ -42,6 +44,9 @@ export interface ClientRow {
 })
 export class ClientsComponent implements OnInit, OnDestroy {
   clients: ClientRow[] = [];
+
+  /** `edit`: full directory controls; `view`: read-only list (no add, links, or row actions). */
+  directoryUiMode: 'view' | 'edit' = 'view';
 
   selectedTab: 'all' | 'active' | 'archived' = 'active';
   /** Filters the current tab’s rows by name, code, agents, status. */
@@ -110,6 +115,19 @@ export class ClientsComponent implements OnInit, OnDestroy {
       return byTab;
     }
     return byTab.filter((client) => this.clientMatchesSearch(client, q));
+  }
+
+  setDirectoryUiMode(mode: 'view' | 'edit'): void {
+    this.directoryUiMode = mode;
+  }
+
+  toggleDirectoryUiMode(): void {
+    this.directoryUiMode = this.directoryUiMode === 'view' ? 'edit' : 'view';
+  }
+
+  /** Clickable client name only in edit mode for non-archived rows. */
+  showClientNameLink(client: ClientRow): boolean {
+    return this.directoryUiMode === 'edit' && client.status !== 'Archived';
   }
 
   get emptyDirectoryHint(): string {
@@ -255,7 +273,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
       this.actionMessage = this.loadError;
       return;
     }
-    
+
     const headers = new HttpHeaders({
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json'
@@ -263,7 +281,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
     const url = `${this.apiBase}/clients/${encodeURIComponent(client.clientCode)}`;
 
     try {
-      const body = await this.unarchiveClientRequest(url, headers, client);
+      const body = await this.unarchiveClientRequest(url, headers);
       this.loadError = '';
       this.actionMessage =
         body?.message?.trim() ||
@@ -278,39 +296,17 @@ export class ClientsComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** PUT /clients/:clientCode — align with client-form update body + clear archive. */
-  private restoreClientPayload(client: ClientRow): Record<string, unknown> {
-    const agents =
-      client.enabledAgents?.length > 0
-        ? [...client.enabledAgents]
-        : ['chat'];
-    const voiceRaw = client.voiceConcurrency;
-    const voiceConcurrency =
-      typeof voiceRaw === 'number' &&
-      Number.isInteger(voiceRaw) &&
-      voiceRaw >= 1
-        ? voiceRaw
-        : 1;
-    const dataResidency = (client.dataResidency ?? 'global').trim() || 'global';
-    return {
-      archived: false,
-      clientName: client.clientName,
-      enabledAgents: agents,
-      dataResidency,
-      voiceConcurrency
-    };
-  }
-
+  /** PUT /admin/clients/:code — body `{ isArchived: false }` per API. */
   private async unarchiveClientRequest(
     url: string,
-    headers: HttpHeaders,
-    client: ClientRow
-  ): Promise<{ message?: string } | null> {
+    headers: HttpHeaders
+  ): Promise<{ message?: string; client?: unknown } | null> {
     const res = await firstValueFrom(
-      this.http.put<{ message?: string }>(url, this.restoreClientPayload(client), {
-        headers,
-        observe: 'response'
-      })
+      this.http.put<{ message?: string; client?: unknown }>(
+        url,
+        { isArchived: false },
+        { headers, observe: 'response' }
+      )
     );
     return res.body;
   }
@@ -347,7 +343,10 @@ export class ClientsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const headers = new HttpHeaders({ Authorization: `Bearer ${accessToken}` });
+    const headers = new HttpHeaders({
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    });
     const url = `${this.apiBase}/clients/${encodeURIComponent(client.clientCode)}`;
 
     try {
@@ -369,35 +368,19 @@ export class ClientsComponent implements OnInit, OnDestroy {
     }
   }
 
-  /**
-   * Backend may use DELETE (hard/soft remove) or PATCH (soft archive).
-   * Adjust here if your API uses e.g. POST …/archive only.
-   */
+  /** PUT /admin/clients/:code — body `{ isArchived: true }` per API. */
   private async archiveClientRequest(
     url: string,
     headers: HttpHeaders
-  ): Promise<{ message?: string } | null> {
-    try {
-      const res = await firstValueFrom(
-        this.http.delete<{ message?: string }>(url, {
-          headers,
-          observe: 'response'
-        })
-      );
-      return res.body;
-    } catch (first) {
-      const err = first as HttpErrorResponse;
-      if (err.status === 405 || err.status === 501) {
-        const res = await firstValueFrom(
-          this.http.patch<{ message?: string }>(url, { archived: true }, {
-            headers,
-            observe: 'response'
-          })
-        );
-        return res.body;
-      }
-      throw first;
-    }
+  ): Promise<{ message?: string; client?: unknown } | null> {
+    const res = await firstValueFrom(
+      this.http.put<{ message?: string; client?: unknown }>(
+        url,
+        { isArchived: true },
+        { headers, observe: 'response' }
+      )
+    );
+    return res.body;
   }
 
   private describeArchiveError(error: unknown): string {

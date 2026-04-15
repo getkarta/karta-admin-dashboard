@@ -212,8 +212,9 @@
   line-height: 1.45;
 }
 
-/* Edit User modal: role picker matches Data Residency custom dropdown width */
-.form-group--edit-user-role {
+/* Edit / Delete User modals: same full-width layout as other residency-dd pickers */
+.form-group--edit-user-role,
+.form-group--delete-user-email {
   align-items: flex-start;
 
   .residency-dd {
@@ -531,6 +532,13 @@ select.form-input,
   }
 }
 
+.users-section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
 // ----- Add User modal -----
 .modal-overlay {
   position: fixed;
@@ -551,6 +559,11 @@ select.form-input,
   max-width: 420px;
   padding: 0;
   overflow: hidden;
+
+  /* Let custom dropdown panels extend below the card without clipping */
+  &:has(.residency-dd--open) {
+    overflow: visible;
+  }
 }
 
 .modal-header {

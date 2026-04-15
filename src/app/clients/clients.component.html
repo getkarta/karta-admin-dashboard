@@ -22,7 +22,28 @@
       </div>
 
       <div class="header-actions">
-        <button class="button" type="button" (click)="addClient()">Add Client</button>
+        <button
+          type="button"
+          class="directory-slide-toggle"
+          [class.directory-slide-toggle--edit]="directoryUiMode === 'edit'"
+          [attr.aria-pressed]="directoryUiMode === 'edit'"
+          [attr.aria-label]="
+            directoryUiMode === 'view'
+              ? 'Directory is in View mode. Activate to switch to Edit mode.'
+              : 'Directory is in Edit mode. Activate to switch to View mode.'
+          "
+          (click)="toggleDirectoryUiMode()">
+          <span class="directory-slide-toggle__track">
+            <span class="directory-slide-toggle__label directory-slide-toggle__label--edit" aria-hidden="true">
+              Edit
+            </span>
+            <span class="directory-slide-toggle__label directory-slide-toggle__label--view" aria-hidden="true">
+              View
+            </span>
+            <span class="directory-slide-toggle__thumb" aria-hidden="true"></span>
+          </span>
+        </button>
+        <button *ngIf="directoryUiMode === 'edit'" class="button" type="button" (click)="addClient()">Add Client</button>
       </div>
     </div>
 
@@ -86,20 +107,20 @@
             <th scope="col">Enabled Agents</th>
             <th scope="col">Status</th>
             <th scope="col">Created On</th>
-            <th scope="col">Actions</th>
+            <th *ngIf="directoryUiMode === 'edit'" scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>
           <tr *ngFor="let client of pagedClients">
             <td>
               <div class="client-name">
-                <ng-container *ngIf="client.status === 'Archived'; else clientNameLink">
-                  <span class="client-name__text">{{ client.clientName }}</span>
-                </ng-container>
-                <ng-template #clientNameLink>
+                <ng-container *ngIf="showClientNameLink(client); else clientNamePlain">
                   <button type="button" class="client-link" (click)="editClient(client)">
                     {{ client.clientName }}
                   </button>
+                </ng-container>
+                <ng-template #clientNamePlain>
+                  <span class="client-name__text">{{ client.clientName }}</span>
                 </ng-template>
               </div>
             </td>
@@ -146,7 +167,7 @@
               </span>
             </td>
             <td>{{ client.createdOn }}</td>
-            <td>
+            <td *ngIf="directoryUiMode === 'edit'">
               <div class="row-actions" *ngIf="client.status === 'Archived'; else activeRowActions">
                 <button type="button" class="inline-button" (click)="unarchiveClient(client)">
                   Unarchive
