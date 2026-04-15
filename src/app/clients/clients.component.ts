@@ -34,6 +34,8 @@ export interface ClientRow {
   /** Carried from API for PUT /clients/:code (e.g. unarchive). */
   dataResidency?: string;
   voiceConcurrency?: number;
+  /** Optional; from list API when provided. */
+  userCount?: number;
 }
 
 @Component({
@@ -67,6 +69,14 @@ export class ClientsComponent implements OnInit, OnDestroy {
   /** Brief “Copied” hint next to the client code that was copied */
   copiedClientCode: string | null = null;
   private copyFeedbackClearId: ReturnType<typeof setTimeout> | null = null;
+
+  usersPreviewOpen = false;
+  usersPreviewLoading = false;
+  usersPreviewError = '';
+  usersPreviewClientName = '';
+  usersPreviewClientCode = '';
+  usersPreviewRows: Array<{ email: string; role: string; createdAt?: string }> =
+    [];
 
   constructor(
     private http: HttpClient,
@@ -125,9 +135,86 @@ export class ClientsComponent implements OnInit, OnDestroy {
     this.directoryUiMode = this.directoryUiMode === 'view' ? 'edit' : 'view';
   }
 
-  /** Clickable client name only in edit mode for non-archived rows. */
+  /** Clickable client name for non-archived rows (view → read-only client; edit → full edit). */
   showClientNameLink(client: ClientRow): boolean {
-    return this.directoryUiMode === 'edit' && client.status !== 'Archived';
+    return client.status !== 'Archived';
+  }
+
+  userCountFor(client: ClientRow): number {
+    const n = client.userCount;
+    if (typeof n === 'number' && Number.isFinite(n) && n >= 0) {
+      return Math.floor(n);
+    }
+    return 0;
+  }
+
+  onClientNameClick(client: ClientRow): void {
+    if (client.status === 'Archived') {
+      return;
+    }
+    if (this.directoryUiMode === 'view') {
+      this.openClientReadOnly(client);
+    } else {
+      this.editClient(client);
+    }
+  }
+
+  openClientReadOnly(client: ClientRow): void {
+    void this.router.navigate(['/clients', client.clientCode, 'edit'], {
+      state: { client, viewOnly: true },
+      queryParams: { view: '1' }
+    });
+  }
+
+  closeUsersPreview(): void {
+    this.usersPreviewOpen = false;
+    this.usersPreviewLoading = false;
+    this.usersPreviewError = '';
+    this.usersPreviewRows = [];
+    this.usersPreviewClientName = '';
+    this.usersPreviewClientCode = '';
+  }
+
+  async openUsersPreview(client: ClientRow): Promise<void> {
+    this.usersPreviewClientName = client.clientName;
+    this.usersPreviewClientCode = client.clientCode;
+    this.usersPreviewOpen = true;
+    this.usersPreviewLoading = true;
+    this.usersPreviewError = '';
+    this.usersPreviewRows = [];
+
+    const accessToken = localStorage.getItem('accessToken');
+    if (!accessToken) {
+      this.usersPreviewLoading = false;
+      this.usersPreviewError = 'Session expired. Please log in again.';
+      return;
+    }
+
+    const code = encodeURIComponent(client.clientCode);
+    try {
+      const res = await firstValueFrom(
+        this.http.get<{
+          users?: Array<{
+            email?: string;
+            role?: string;
+            createdAt?: string;
+          }>;
+        }>(`${this.apiBase}/clients/${code}/users`, {
+          headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` })
+        })
+      );
+      const raw = res.users ?? [];
+      this.usersPreviewRows = raw.map((u) => ({
+        email: (u.email ?? '').trim() || '—',
+        role: (u.role ?? '').trim() || '—',
+        createdAt: u.createdAt
+      }));
+    } catch (error) {
+      console.error(error);
+      this.usersPreviewError = 'Unable to load users for this client.';
+    } finally {
+      this.usersPreviewLoading = false;
+    }
   }
 
   get emptyDirectoryHint(): string {
@@ -425,6 +512,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
       const rows = this.extractClientRows(response);
       this.clients = this.mergeApiRowsWithLocallyArchived(rows);
       this.clampPageIndex();
+      await this.hydrateUserCountsFromApi();
       this.actionMessage = this.clients.length
         ? 'Clients loaded successfully.'
         : 'No clients found yet. Add Client flow will be the next page we create.';
@@ -550,13 +638,90 @@ export class ClientsComponent implements OnInit, OnDestroy {
       createdOn: this.formatDate(client?.createdAt || client?.updatedAt),
       billing: client?.billing ?? client?.bi,
       dataResidency: this.extractDataResidency(client),
-      voiceConcurrency: this.extractVoiceConcurrency(client)
+      voiceConcurrency: this.extractVoiceConcurrency(client),
+      userCount: this.extractUserCount(client)
     }));
   }
 
   private extractDataResidency(client: any): string | undefined {
     const dr = client?.dataResidency ?? client?.data_residency;
     return typeof dr === 'string' && dr.trim() ? dr.trim() : undefined;
+  }
+
+  private extractUserCount(client: any): number | undefined {
+    const direct =
+      client?.userCount ??
+      client?.usersCount ??
+      client?.user_count ??
+      client?.memberCount ??
+      client?.membersCount ??
+      client?.numUsers;
+    const n = typeof direct === 'number' ? direct : Number(direct);
+    if (Number.isFinite(n) && n >= 0) {
+      return Math.floor(n);
+    }
+    const users = client?.users;
+    if (Array.isArray(users)) {
+      return users.length;
+    }
+    return undefined;
+  }
+
+  /**
+   * List clients often omits user counts — fetch `GET …/clients/:code/users` per client
+   * (batched) so the Users column shows real totals.
+   */
+  private async hydrateUserCountsFromApi(): Promise<void> {
+    const token = localStorage.getItem('accessToken');
+    if (!token || !this.clients.length) {
+      return;
+    }
+
+    const codes = [
+      ...new Set(
+        this.clients
+          .map((c) => (c.clientCode || '').trim())
+          .filter((c) => c && c !== 'N/A')
+      )
+    ];
+    if (!codes.length) {
+      return;
+    }
+
+    const headers = new HttpHeaders({ Authorization: `Bearer ${token}` });
+    const counts = new Map<string, number>();
+    const batchSize = 8;
+
+    for (let i = 0; i < codes.length; i += batchSize) {
+      const slice = codes.slice(i, i + batchSize);
+      await Promise.all(
+        slice.map(async (code) => {
+          try {
+            const res = await firstValueFrom(
+              this.http.get<{ users?: unknown[] }>(
+                `${this.apiBase}/clients/${encodeURIComponent(code)}/users`,
+                { headers }
+              )
+            );
+            counts.set(code, Array.isArray(res.users) ? res.users.length : 0);
+          } catch {
+            // keep list-derived count if any; otherwise unchanged
+          }
+        })
+      );
+    }
+
+    if (!counts.size) {
+      return;
+    }
+
+    this.clients = this.clients.map((row) => {
+      const code = (row.clientCode || '').trim();
+      if (code && counts.has(code)) {
+        return { ...row, userCount: counts.get(code)! };
+      }
+      return row;
+    });
   }
 
   private extractVoiceConcurrency(client: any): number | undefined {

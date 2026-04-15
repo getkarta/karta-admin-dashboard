@@ -28,9 +28,6 @@ export class ClientFormComponent implements OnInit {
   @ViewChild('residencyDropdownRoot')
   residencyDropdownRoot?: ElementRef<HTMLElement>;
 
-  @ViewChild('editUserRoleDropdownRoot')
-  editUserRoleDropdownRoot?: ElementRef<HTMLElement>;
-
   @ViewChild('deleteUserEmailDropdownRoot')
   deleteUserEmailDropdownRoot?: ElementRef<HTMLElement>;
 
@@ -38,6 +35,8 @@ export class ClientFormComponent implements OnInit {
   dataResidencyMenuOpen = false;
 
   isEditMode = false;
+  /** Opened from directory in view mode (?view=1); all edits disabled. */
+  clientPageViewOnly = false;
   clientCode = '';
   errorMessage = '';
   successMessage = '';
@@ -48,7 +47,12 @@ export class ClientFormComponent implements OnInit {
   userErrorMessage = '';
   userSuccessMessage = '';
   isAddingUser = false;
-  clientUsers: Array<{ email: string; role: string; createdAt?: string }> = [];
+  clientUsers: Array<{
+    id: string;
+    email: string;
+    role: string;
+    createdAt?: string;
+  }> = [];
   isLoadingUsers = false;
   showAddUserModal = false;
 
@@ -59,19 +63,15 @@ export class ClientFormComponent implements OnInit {
   isDeletingUser = false;
 
   showEditUserModal = false;
-  editUserEmail = '';
-  editUserRole = '';
-  editUserRoleOptions: Array<{ value: string; label: string }> = [];
+  /** Target user id for PUT …/clients/{clientCode}/users/{userId} */
+  editUserId = '';
+  /** Original address (read-only in the modal). */
+  editUserCurrentEmail = '';
+  /** Sent as `email` on PUT …/users/{userId}. */
+  editUserNewEmail = '';
   editUserNewPassword = '';
   editUserErrorMessage = '';
   isUpdatingUser = false;
-  editUserRoleMenuOpen = false;
-
-  /** Roles offered when editing; current role is always included if not listed. */
-  readonly EDIT_USER_ROLE_OPTIONS = [
-    { value: 'member', label: 'Member' },
-    { value: 'admin', label: 'Admin' }
-  ];
 
   // Pricing: PUT /admin/billing/billing — body: clientCode, tier, allowNegativeBalance, customPricing, baseCreditUsage
   pricingErrorMessage = '';
@@ -190,11 +190,6 @@ export class ClientFormComponent implements OnInit {
         this.dataResidencyMenuOpen = false;
       }
     }
-    if (this.editUserRoleMenuOpen) {
-      if (!this.editUserRoleDropdownRoot?.nativeElement?.contains(t)) {
-        this.editUserRoleMenuOpen = false;
-      }
-    }
     if (this.deleteUserEmailMenuOpen) {
       if (!this.deleteUserEmailDropdownRoot?.nativeElement?.contains(t)) {
         this.deleteUserEmailMenuOpen = false;
@@ -212,7 +207,6 @@ export class ClientFormComponent implements OnInit {
   @HostListener('document:keydown.escape')
   onEscape(): void {
     this.dataResidencyMenuOpen = false;
-    this.editUserRoleMenuOpen = false;
     this.deleteUserEmailMenuOpen = false;
     this.billingTierMenuOpen = false;
     this.pricingDd = null;
@@ -223,42 +217,18 @@ export class ClientFormComponent implements OnInit {
 
   toggleDataResidencyMenu(ev: MouseEvent): void {
     ev.stopPropagation();
-    if (this.isLoadingDataResidencyOptions) return;
+    if (this.clientPageViewOnly || this.isLoadingDataResidencyOptions) return;
     this.dataResidencyMenuOpen = !this.dataResidencyMenuOpen;
   }
 
   selectDataResidency(value: string): void {
+    if (this.clientPageViewOnly) return;
     this.clientForm.patchValue({ dataResidency: value });
     this.dataResidencyMenuOpen = false;
   }
 
   isDataResidencySelected(value: string): boolean {
     return this.clientForm.get('dataResidency')?.value === value;
-  }
-
-  get editUserRoleDisplayLabel(): string {
-    const v = this.editUserRole ?? '';
-    const opt = this.editUserRoleOptions.find(
-      (o) => o.value.toLowerCase() === v.trim().toLowerCase()
-    );
-    return opt?.label ?? v;
-  }
-
-  toggleEditUserRoleMenu(ev: MouseEvent): void {
-    ev.stopPropagation();
-    this.editUserRoleMenuOpen = !this.editUserRoleMenuOpen;
-  }
-
-  selectEditUserRole(value: string): void {
-    this.editUserRole = value;
-    this.editUserRoleMenuOpen = false;
-  }
-
-  isEditUserRoleSelected(value: string): boolean {
-    return (
-      (this.editUserRole ?? '').trim().toLowerCase() ===
-      value.trim().toLowerCase()
-    );
   }
 
   get deleteUserEmailDisplayLabel(): string {
@@ -289,11 +259,13 @@ export class ClientFormComponent implements OnInit {
 
   toggleBillingTierMenu(ev: MouseEvent): void {
     ev.stopPropagation();
+    if (this.clientPageViewOnly) return;
     this.pricingDd = null;
     this.billingTierMenuOpen = !this.billingTierMenuOpen;
   }
 
   selectBillingTier(value: string): void {
+    if (this.clientPageViewOnly) return;
     this.billingTier = value;
     this.billingTierMenuOpen = false;
   }
@@ -304,6 +276,7 @@ export class ClientFormComponent implements OnInit {
     field: 'feature' | 'unit' | 'rounding'
   ): void {
     ev.stopPropagation();
+    if (this.clientPageViewOnly) return;
     this.billingTierMenuOpen = false;
     if (
       this.pricingDd?.row === row &&
@@ -355,6 +328,7 @@ export class ClientFormComponent implements OnInit {
     field: 'feature' | 'unit' | 'rounding',
     value: string
   ): void {
+    if (this.clientPageViewOnly) return;
     const rule = this.pricingRules[row];
     if (!rule) return;
     if (field === 'feature') rule.featureCode = value;
@@ -369,6 +343,9 @@ export class ClientFormComponent implements OnInit {
   }
 
   toggleEnabledAgent(agentValue: string, ev: Event): void {
+    if (this.clientPageViewOnly) {
+      return;
+    }
     const checked = (ev.target as HTMLInputElement).checked;
     const ctrl = this.clientForm.get('enabledAgents');
     const current = [...((ctrl?.value as string[] | undefined) ?? [])];
@@ -384,6 +361,10 @@ export class ClientFormComponent implements OnInit {
   ngOnInit(): void {
     const code = this.route.snapshot.paramMap.get('code');
 
+    this.clientPageViewOnly =
+      this.route.snapshot.queryParamMap.get('view') === '1' ||
+      !!(typeof history !== 'undefined' && history.state?.viewOnly === true);
+
     if (!code) {
       void this.loadDataResidencyOptions();
       return;
@@ -391,14 +372,46 @@ export class ClientFormComponent implements OnInit {
 
     this.isEditMode = true;
     this.clientCode = code;
-    this.loadClientUsers();
 
     const client = history.state?.client as ClientRow | undefined;
+    void this.hydrateEditClient(client).then(() =>
+      this.applyDirectoryViewOnlyMode()
+    );
+  }
+
+  private async hydrateEditClient(client: ClientRow | undefined): Promise<void> {
     if (client) {
-      void this.bootstrapEditFormWithClient(client);
+      await this.bootstrapEditFormWithClient(client);
     } else {
-      void this.loadClientByCode();
+      await this.loadClientByCode();
     }
+    await this.loadClientUsers();
+  }
+
+  private applyDirectoryViewOnlyMode(): void {
+    if (!this.clientPageViewOnly || !this.isEditMode) {
+      return;
+    }
+    this.clientForm.disable({ emitEvent: false });
+    this.dataResidencyMenuOpen = false;
+    this.billingTierMenuOpen = false;
+    this.pricingDd = null;
+  }
+
+  get clientFormPageTitle(): string {
+    if (this.clientPageViewOnly) {
+      return 'View client';
+    }
+    return this.isEditMode ? 'Update Client' : 'Create Client';
+  }
+
+  get clientFormPageDescription(): string {
+    if (this.clientPageViewOnly) {
+      return 'Read-only: review basic information, users, and pricing below. Nothing on this page can be changed.';
+    }
+    return this.isEditMode
+      ? 'Update the client name and choose which agents remain enabled.'
+      : 'Create a new client record. Agents can be configured after the client is created.';
   }
 
   private pickResidencyAndVoiceFromUnknown(
@@ -581,6 +594,9 @@ export class ClientFormComponent implements OnInit {
   }
 
   async onSubmit(): Promise<void> {
+    if (this.clientPageViewOnly) {
+      return;
+    }
     if (this.clientForm.invalid) {
       this.clientForm.markAllAsTouched();
       return;
@@ -667,6 +683,9 @@ export class ClientFormComponent implements OnInit {
   }
 
   async addUser(): Promise<void> {
+    if (this.clientPageViewOnly) {
+      return;
+    }
     if (!this.newUserEmail.trim() || !this.newUserPassword.trim()) {
       this.userErrorMessage = 'Email and password are required.';
       return;
@@ -719,6 +738,7 @@ export class ClientFormComponent implements OnInit {
   }
 
   openAddUserModal(): void {
+    if (this.clientPageViewOnly) return;
     this.closeDeleteUserModal();
     this.userErrorMessage = '';
     this.userSuccessMessage = '';
@@ -734,8 +754,10 @@ export class ClientFormComponent implements OnInit {
   }
 
   openDeleteUserModal(): void {
+    if (this.clientPageViewOnly) return;
     this.showAddUserModal = false;
     this.showEditUserModal = false;
+    this.userErrorMessage = '';
     this.deleteUserErrorMessage = '';
     this.deleteUserEmailMenuOpen = false;
     this.deleteUserEmail = this.clientUsers[0]?.email ?? '';
@@ -750,6 +772,7 @@ export class ClientFormComponent implements OnInit {
   }
 
   async deleteUser(): Promise<void> {
+    if (this.clientPageViewOnly) return;
     const email = this.deleteUserEmail.trim();
     if (!email) {
       this.deleteUserErrorMessage = 'Select a user to remove.';
@@ -773,13 +796,23 @@ export class ClientFormComponent implements OnInit {
         return;
       }
 
+      const row = this.clientUsers.find(
+        (u) => u.email.trim().toLowerCase() === email.toLowerCase()
+      );
+      const userId = row?.id?.trim();
+      if (!userId) {
+        this.deleteUserErrorMessage =
+          'Could not resolve this user’s id. Reload the page and try again.';
+        return;
+      }
+
       await firstValueFrom(
-        this.http.delete(
-          `${this.apiBase}/clients/${this.clientCode}/users/${encodeURIComponent(email)}`,
-          {
-            headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` })
-          }
-        )
+        this.http.delete<{
+          message?: string;
+          userId?: string;
+        }>(`${this.apiBase}/clients/${this.clientCode}/users/${encodeURIComponent(userId)}`, {
+          headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` })
+        })
       );
 
       this.closeDeleteUserModal();
@@ -793,44 +826,48 @@ export class ClientFormComponent implements OnInit {
     }
   }
 
-  openEditUserModal(u: { email: string; role: string }): void {
+  openEditUserModal(u: { id: string; email: string; role: string }): void {
+    if (this.clientPageViewOnly) return;
     this.closeDeleteUserModal();
+    this.userErrorMessage = '';
     this.editUserErrorMessage = '';
-    this.editUserEmail = u.email;
-    const role = (u.role ?? '').trim() || 'member';
-    const base = [...this.EDIT_USER_ROLE_OPTIONS];
-    const hasKnown = base.some((o) => o.value.toLowerCase() === role.toLowerCase());
-    this.editUserRoleOptions = hasKnown
-      ? base
-      : [{ value: role, label: role }, ...base];
-    this.editUserRole = role;
+    const id = (u.id ?? '').trim();
+    if (!id) {
+      this.userErrorMessage =
+        'Cannot edit this user: missing id from the server. Reload the page and try again.';
+      return;
+    }
+    this.editUserId = id;
+    this.editUserCurrentEmail = u.email;
+    this.editUserNewEmail = u.email;
     this.editUserNewPassword = '';
-    this.editUserRoleMenuOpen = false;
     this.showEditUserModal = true;
   }
 
   closeEditUserModal(): void {
     this.showEditUserModal = false;
-    this.editUserRoleMenuOpen = false;
-    this.editUserEmail = '';
-    this.editUserRole = '';
-    this.editUserRoleOptions = [];
+    this.editUserId = '';
+    this.editUserCurrentEmail = '';
+    this.editUserNewEmail = '';
     this.editUserNewPassword = '';
     this.editUserErrorMessage = '';
   }
 
   async updateUser(): Promise<void> {
-    if (!this.editUserEmail.trim()) {
-      this.editUserErrorMessage = 'User email is missing.';
+    if (this.clientPageViewOnly) return;
+    if (!this.editUserId.trim()) {
+      this.editUserErrorMessage = 'User id is missing. Close this dialog and try again.';
       return;
     }
-    if (!this.editUserRole.trim()) {
-      this.editUserErrorMessage = 'Role is required.';
+    const email = this.editUserNewEmail.trim();
+    if (!email) {
+      this.editUserErrorMessage = 'New email is required.';
       return;
     }
     const pwd = this.editUserNewPassword.trim();
     if (pwd && pwd.length < 6) {
-      this.editUserErrorMessage = 'New password must be at least 6 characters, or leave blank to keep the current password.';
+      this.editUserErrorMessage =
+        'New password must be at least 6 characters, or leave blank to keep the current password.';
       return;
     }
 
@@ -844,20 +881,25 @@ export class ClientFormComponent implements OnInit {
         return;
       }
 
-      const body: { email: string; clientCode: string; role: string; password?: string } = {
-        email: this.editUserEmail.trim(),
-        clientCode: this.clientCode,
-        role: this.editUserRole.trim()
-      };
-      if (pwd) body.password = pwd;
+      const body: { email: string; password?: string } = { email };
+      if (pwd) {
+        body.password = pwd;
+      }
 
       await firstValueFrom(
-        this.http.patch(`${this.apiBase}/users`, body, {
-          headers: new HttpHeaders({
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          })
-        })
+        this.http.put<{
+          message?: string;
+          user?: { id: string; email: string; role: string; createdAt: string };
+        }>(
+          `${this.apiBase}/clients/${this.clientCode}/users/${encodeURIComponent(this.editUserId.trim())}`,
+          body,
+          {
+            headers: new HttpHeaders({
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            })
+          }
+        )
       );
 
       this.closeEditUserModal();
@@ -877,12 +919,24 @@ export class ClientFormComponent implements OnInit {
     this.isLoadingUsers = true;
     try {
       const res = await firstValueFrom(
-        this.http.get<{ users: Array<{ email: string; role: string; createdAt?: string }> }>(
-          `${this.apiBase}/clients/${this.clientCode}/users`,
-          { headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` }) }
-        )
+        this.http.get<{
+          users: Array<{
+            id?: string;
+            _id?: string;
+            email: string;
+            role: string;
+            createdAt?: string;
+          }>;
+        }>(`${this.apiBase}/clients/${this.clientCode}/users`, {
+          headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` })
+        })
       );
-      this.clientUsers = res.users ?? [];
+      this.clientUsers = (res.users ?? []).map((u) => ({
+        id: String(u.id ?? u._id ?? '').trim(),
+        email: u.email,
+        role: u.role,
+        createdAt: u.createdAt
+      }));
     } catch {
       this.clientUsers = [];
     } finally {
@@ -891,6 +945,7 @@ export class ClientFormComponent implements OnInit {
   }
 
   addPricingRule(): void {
+    if (this.clientPageViewOnly) return;
     this.pricingDd = null;
     this.pricingRules.push({
       featureCode: 'chat',
@@ -901,6 +956,7 @@ export class ClientFormComponent implements OnInit {
   }
 
   removePricingRule(index: number): void {
+    if (this.clientPageViewOnly) return;
     this.pricingRules.splice(index, 1);
     if (this.pricingDd?.row === index) {
       this.pricingDd = null;
@@ -910,6 +966,9 @@ export class ClientFormComponent implements OnInit {
   }
 
   async savePricing(): Promise<void> {
+    if (this.clientPageViewOnly) {
+      return;
+    }
     const accessToken = localStorage.getItem('accessToken');
     if (!accessToken) {
       this.pricingErrorMessage = 'Session expired. Please log in again.';

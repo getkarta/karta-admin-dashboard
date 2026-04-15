@@ -32,7 +32,7 @@
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-bottom: 24px;
+  margin-bottom: 0;
 }
 
 .summary-card {
@@ -54,6 +54,10 @@
   color: $color-primary;
   font-size: 22px;
   font-weight: 700;
+}
+
+.summary-with-spacing {
+  margin-bottom: 24px;
 }
 
 .clients-card {
@@ -98,8 +102,7 @@
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 10px;
-  margin-top: -4px;
+  gap: 12px;
 }
 
 /*
@@ -138,31 +141,20 @@
   button.directory-slide-toggle .directory-slide-toggle__track {
     display: block !important;
     position: relative !important;
-    /* ~60% of original 86×42 — between the tiny variant and full-size */
-    width: 52px;
-    height: 25px;
+    width: 60px;
+    height: 28px;
+    --toggle-thumb: 28px;
+    --toggle-travel: calc(60px - var(--toggle-thumb));
     line-height: 0;
     border-radius: 999px;
     overflow: hidden;
     box-sizing: border-box;
-  
-    background-color: #111827 !important;
-    background-image: linear-gradient(180deg, #374151 0%, #1f2937 45%, #111827 100%) !important;
-    border: 1px solid #0f172a !important;
-  
-    box-shadow:
-      0 1px 4px rgba(15, 23, 42, 0.35),
-      inset 0 1px 0 rgba(255, 255, 255, 0.12),
-      inset 0 -1px 2px rgba(0, 0, 0, 0.35);
+
+    background: $color-primary !important;
+    border: none !important;
+    box-shadow: none;
   }
-  
-  /* Edit state track */
-  button.directory-slide-toggle.directory-slide-toggle--edit .directory-slide-toggle__track {
-    background-color: #000000 !important;
-    background-image: linear-gradient(180deg, #404040 0%, #171717 50%, #000000 100%) !important;
-    border-color: #000000 !important;
-  }
-  
+
   /* =========================
      Remove global span issues
      ========================= */
@@ -183,27 +175,28 @@
     z-index: 1;
     box-sizing: border-box;
 
-    font-size: 7px !important;
+    font-size: 8.5px !important;
     font-weight: 600 !important;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
 
-    color: #94a3b8 !important;
+    color: #cbd5e1 !important;
     pointer-events: none;
     user-select: none;
 
-    transition: color 0.22s ease;
+    transition: color 0.2s ease;
   }
 
   button.directory-slide-toggle .directory-slide-toggle__label--view {
-    right: 2px;
-    padding: 2px 6px 2px 8px;
+    right: 6px;
+    padding: 0 2px 0 10px;
     text-align: right;
     white-space: nowrap;
   }
 
   button.directory-slide-toggle .directory-slide-toggle__label--edit {
-    left: 2px;
-    padding: 2px 8px 2px 6px;
+    left: 6px;
+    padding: 0 10px 0 2px;
     white-space: nowrap;
   }
   
@@ -234,38 +227,33 @@
      Thumb (Main Fix)
      ========================= */
   
-  /* Thumb flush to each end (2px inset); vertical center in track padding box (track has 1px border) */
+  /*
+   * Thumb: transform (not `left`) for sharper subpixels; tiny horizontal overlap
+   * clips under the track so no black “arc” shows at the pill ends.
+   */
   button.directory-slide-toggle .directory-slide-toggle__thumb {
     position: absolute !important;
-    top: 50%;
-    left: 2px;
-    transform: translateY(-50%);
+    top: 0;
+    left: 0;
+    width: var(--toggle-thumb, 28px);
+    height: var(--toggle-thumb, 28px);
+    transform: translate3d(-0.5px, 0, 0);
+    backface-visibility: hidden;
 
-    width: 22px;
-    height: 22px;
-  
     border-radius: 50%;
     box-sizing: border-box;
-  
-    background-color: #f8fafc !important;
-    background-image: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%) !important;
-    border: 1px solid #cbd5e1 !important;
-  
-    box-shadow:
-      0 1px 2px rgba(15, 23, 42, 0.3),
-      inset 0 1px 0 rgba(255, 255, 255, 0.95);
-  
+
+    background: $color-white !important;
+    border: none !important;
+    box-shadow: none;
+
     z-index: 3;
-  
-    transition: left 0.28s cubic-bezier(0.4, 0, 0.2, 1), transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   }
-  
-  /* =========================
-     Thumb Position (FIXED)
-     ========================= */
-  
+
   button.directory-slide-toggle.directory-slide-toggle--edit .directory-slide-toggle__thumb {
-    left: calc(100% - 2px - 22px);
+    transform: translate3d(calc(var(--toggle-travel, 32px) + 0.5px), 0, 0);
   }
 .clients-card__top .button {
   margin: 0;
@@ -324,30 +312,102 @@
   padding: 16px 20px 0;
 }
 
-.filter-tabs {
-  background: #f2f4f7;
-  border-radius: 999px;
-  display: inline-flex;
-  gap: 6px;
-  padding: 6px;
-  margin: 0 0 16px;
+.filter-tabs-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin-bottom: 16px;
 }
 
-.filter-tabs button {
-  background: transparent;
-  border: 0;
-  border-radius: 999px;
-  color: #475467;
+.filter-tabs-row__add.button {
   margin: 0;
+  flex-shrink: 0;
+}
+
+/* White track + sliding black pill; selected label is white on black */
+.filter-tabs {
+  --ft-pad: 4px;
+  --ft-gap: 4px;
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  gap: var(--ft-gap);
+  padding: var(--ft-pad);
+  margin: 0;
+  box-sizing: border-box;
+  background: $color-white;
+  border: 1px solid $color-medium-gray;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.filter-tabs__slider {
+  position: absolute;
+  z-index: 0;
+  top: var(--ft-pad);
+  bottom: var(--ft-pad);
+  left: var(--ft-pad);
+  width: calc((100% - 2 * var(--ft-pad) - var(--ft-gap)) / 2);
+  border-radius: 999px;
+  background: $color-primary;
+  box-shadow: none;
+  transform: translate3d(0, 0, 0);
+  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+  backface-visibility: hidden;
+}
+
+.filter-tabs--archived .filter-tabs__slider {
+  transform: translate3d(calc(100% + var(--ft-gap)), 0, 0);
+}
+
+.filter-tabs__btn {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
   min-width: 72px;
   padding: 8px 14px;
+  margin: 0 !important;
+  margin-right: 0 !important;
+  border: 0;
+  border-radius: 999px;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  transition: color 0.22s ease, font-weight 0.22s ease;
+  color: $color-primary !important;
+
+  &:focus-visible {
+    outline: 2px solid $color-primary;
+    outline-offset: 2px;
+  }
+
+  &:hover {
+    transform: none;
+  }
 }
 
-.filter-tabs button.active {
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgb(16 24 40 / 10%);
-  color: #101828;
+.filter-tabs:not(.filter-tabs--archived) .filter-tabs__btn:first-of-type {
+  color: $color-white !important;
   font-weight: 600;
+}
+
+.filter-tabs:not(.filter-tabs--archived) .filter-tabs__btn:last-of-type:hover {
+  color: $color-primary !important;
+}
+
+.filter-tabs--archived .filter-tabs__btn:last-of-type {
+  color: $color-white !important;
+  font-weight: 600;
+}
+
+.filter-tabs--archived .filter-tabs__btn:first-of-type:hover {
+  color: $color-primary !important;
 }
 
 .action-banner {
@@ -376,8 +436,45 @@
 
 .clients-table {
   border-collapse: collapse;
-  min-width: 960px;
+  min-width: 1020px;
   width: 100%;
+}
+
+.clients-table__users-col {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.users-count-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  padding: 6px 10px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+  background: #f1f5f9;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+
+  &:hover {
+    background: #e2e8f0;
+    color: #020617;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $color-primary;
+    outline-offset: 2px;
+  }
 }
 
 .clients-table thead {
@@ -417,7 +514,7 @@
 
 .client-name__text {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 400;
   color: $color-primary;
 }
 
@@ -427,7 +524,7 @@
   background: transparent;
   color: $color-primary;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 400;
   text-align: left;
   cursor: pointer;
 }
@@ -583,6 +680,136 @@
 
 .inline-button:hover {
   text-decoration: underline;
+}
+
+/* Users preview modal (directory) */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal-box {
+  background: $color-white;
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.18);
+  width: 100%;
+  max-width: 440px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.modal-box--users-preview {
+  max-width: 520px;
+}
+
+.modal-header {
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 22px 10px;
+  border-bottom: 1px solid $color-medium-gray;
+  box-sizing: border-box;
+}
+
+.modal-title {
+  margin: 0;
+  padding: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: $color-primary;
+}
+
+.modal-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  color: $color-muted;
+  cursor: pointer;
+
+  &:hover {
+    color: $color-primary;
+  }
+}
+
+.modal-body {
+  padding: 14px 22px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid $color-medium-gray;
+  background: #f8fafc;
+}
+
+.users-preview__sub {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: $color-primary;
+}
+
+.users-preview__hint {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.users-preview__empty {
+  margin: 0;
+  font-size: 14px;
+  color: $color-muted;
+}
+
+.users-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.users-preview-table th,
+.users-preview-table td {
+  border-bottom: 1px solid $color-medium-gray;
+  padding: 10px 8px;
+  text-align: left;
+}
+
+.users-preview-table th {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #475467;
+  background: #f8fafc;
+}
+
+.message.message--error {
+  font-size: 13px;
+  color: #b42318;
 }
 
 @media (max-width: 992px) {

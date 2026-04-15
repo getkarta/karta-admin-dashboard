@@ -212,8 +212,13 @@
   line-height: 1.45;
 }
 
-/* Edit / Delete User modals: same full-width layout as other residency-dd pickers */
-.form-group--edit-user-role,
+.form-input.edit-user-field--readonly {
+  color: #374151;
+  background: #f9fafb;
+  cursor: default;
+}
+
+/* Delete User modal: full-width residency-dd picker */
 .form-group--delete-user-email {
   align-items: flex-start;
 

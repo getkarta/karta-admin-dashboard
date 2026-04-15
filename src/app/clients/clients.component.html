@@ -4,16 +4,18 @@
     Manage client onboarding, enabled agents, and archive actions from one workspace.
   </div>
 
-  <section class="summary-grid">
-    <article class="summary-card">
-      <span class="summary-card__label">Active</span>
-      <strong class="summary-card__value">{{ activeClients }}</strong>
-    </article>
-    <article class="summary-card">
-      <span class="summary-card__label">Archived</span>
-      <strong class="summary-card__value">{{ archivedClients }}</strong>
-    </article>
-  </section>
+  <div class="summary-with-spacing">
+    <section class="summary-grid">
+      <article class="summary-card">
+        <span class="summary-card__label">Active</span>
+        <strong class="summary-card__value">{{ activeClients }}</strong>
+      </article>
+      <article class="summary-card">
+        <span class="summary-card__label">Archived</span>
+        <strong class="summary-card__value">{{ archivedClients }}</strong>
+      </article>
+    </section>
+  </div>
 
   <section class="clients-card">
     <div class="clients-card__top">
@@ -43,7 +45,6 @@
             <span class="directory-slide-toggle__thumb" aria-hidden="true"></span>
           </span>
         </button>
-        <button *ngIf="directoryUiMode === 'edit'" class="button" type="button" (click)="addClient()">Add Client</button>
       </div>
     </div>
 
@@ -73,18 +74,36 @@
     </div>
 
     <div class="filter-tabs-wrap">
-      <div class="filter-tabs">
+      <div class="filter-tabs-row">
+        <div
+          class="filter-tabs"
+          [class.filter-tabs--archived]="selectedTab === 'archived'"
+          role="tablist"
+          aria-label="Client status">
+          <span class="filter-tabs__slider" aria-hidden="true"></span>
+          <button
+            type="button"
+            class="filter-tabs__btn"
+            role="tab"
+            [attr.aria-selected]="selectedTab === 'active'"
+            (click)="setTab('active')">
+            Active
+          </button>
+          <button
+            type="button"
+            class="filter-tabs__btn"
+            role="tab"
+            [attr.aria-selected]="selectedTab === 'archived'"
+            (click)="setTab('archived')">
+            Archived
+          </button>
+        </div>
         <button
+          *ngIf="directoryUiMode === 'edit'"
           type="button"
-          [class.active]="selectedTab === 'active'"
-          (click)="setTab('active')">
-          Active
-        </button>
-        <button
-          type="button"
-          [class.active]="selectedTab === 'archived'"
-          (click)="setTab('archived')">
-          Archived
+          class="button filter-tabs-row__add"
+          (click)="addClient()">
+          Add Client
         </button>
       </div>
     </div>
@@ -103,6 +122,7 @@
         <thead>
           <tr>
             <th scope="col">Client</th>
+            <th scope="col" class="clients-table__users-col">Users</th>
             <th scope="col">Client Code</th>
             <th scope="col">Enabled Agents</th>
             <th scope="col">Status</th>
@@ -115,7 +135,7 @@
             <td>
               <div class="client-name">
                 <ng-container *ngIf="showClientNameLink(client); else clientNamePlain">
-                  <button type="button" class="client-link" (click)="editClient(client)">
+                  <button type="button" class="client-link" (click)="onClientNameClick(client)">
                     {{ client.clientName }}
                   </button>
                 </ng-container>
@@ -123,6 +143,15 @@
                   <span class="client-name__text">{{ client.clientName }}</span>
                 </ng-template>
               </div>
+            </td>
+            <td class="clients-table__users-col">
+              <button
+                type="button"
+                class="users-count-btn"
+                (click)="openUsersPreview(client)"
+                [attr.aria-label]="'View users for ' + client.clientName + ', ' + userCountFor(client) + ' users'">
+                {{ userCountFor(client) }}
+              </button>
             </td>
             <td class="client-code">
               <div class="client-code__row">
@@ -206,4 +235,41 @@
       {{ emptyDirectoryHint }}
     </div>
   </section>
+
+  <div class="modal-overlay" *ngIf="usersPreviewOpen" (click)="closeUsersPreview()">
+    <div class="modal-box modal-box--users-preview" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3 class="modal-title">Users</h3>
+        <button type="button" class="modal-close" aria-label="Close" (click)="closeUsersPreview()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="users-preview__sub">{{ usersPreviewClientName }} · {{ usersPreviewClientCode }}</p>
+        <p class="users-preview__hint">Members under this client.</p>
+        <p *ngIf="usersPreviewLoading">Loading users...</p>
+        <p class="message message--error" *ngIf="!usersPreviewLoading && usersPreviewError">{{ usersPreviewError }}</p>
+        <div *ngIf="!usersPreviewLoading && !usersPreviewError && usersPreviewRows.length === 0" class="users-preview__empty">
+          No users listed for this client.
+        </div>
+        <table class="users-preview-table" *ngIf="!usersPreviewLoading && usersPreviewRows.length > 0">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Added</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let u of usersPreviewRows">
+              <td>{{ u.email }}</td>
+              <td>{{ u.role }}</td>
+              <td>{{ u.createdAt | date:'short' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="button" (click)="closeUsersPreview()">Close</button>
+      </div>
+    </div>
+  </div>
 </div>
