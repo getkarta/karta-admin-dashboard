@@ -1,5 +1,8 @@
 <div class="page-content">
-  <div class="head">User information</div>
+  <div class="user-info-page-head">
+    <h1 class="user-info-page-head__title">User information</h1>
+    <p class="user-info-page-head__client">{{ clientName }} · {{ clientCode }}</p>
+  </div>
   <div class="subtext">
     Members under this client. Use search and pagination to work through large lists.
   </div>
@@ -9,32 +12,28 @@
   </p>
 
   <section class="clients-card">
-    <div class="clients-card__top clients-card__top--with-action">
-      <div class="clients-card__top-title">
-        <h2>{{ clientName }} · {{ clientCode }}</h2>
-      </div>
-      <button type="button" class="button add-toolbar__btn" (click)="openAddDialog()">Add User</button>
-    </div>
-
     <div class="clients-card__search">
-      <label class="client-search">
-        <span class="client-search__icon" aria-hidden="true">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path
-              d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Zm0-2a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11Z"
-              fill="#98A2B3" />
-            <path d="m16.5 16.5 4.2 4.2" stroke="#98A2B3" stroke-width="2" stroke-linecap="round" />
-          </svg>
-        </span>
-        <input
-          type="search"
-          class="client-search__input"
-          [(ngModel)]="searchQuery"
-          (ngModelChange)="onSearchChange()"
-          placeholder="Search by email, role, or date…"
-          autocomplete="off"
-          aria-label="Search users" />
-      </label>
+      <div class="clients-card__search-row">
+        <label class="client-search">
+          <span class="client-search__icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Zm0-2a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11Z"
+                fill="#98A2B3" />
+              <path d="m16.5 16.5 4.2 4.2" stroke="#98A2B3" stroke-width="2" stroke-linecap="round" />
+            </svg>
+          </span>
+          <input
+            type="search"
+            class="client-search__input"
+            [(ngModel)]="searchQuery"
+            (ngModelChange)="onSearchChange()"
+            placeholder="Search by email, role, or date…"
+            autocomplete="off"
+            aria-label="Search users" />
+        </label>
+        <button type="button" class="button add-toolbar__btn" (click)="openAddDialog()">Add User</button>
+      </div>
     </div>
 
     <div class="action-banner" *ngIf="actionMessage">{{ actionMessage }}</div>

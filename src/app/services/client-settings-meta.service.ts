@@ -1,8 +1,6 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
 
-import { environment } from '../../config/environment';
+import { ApiService } from './api.service';
 
 export interface DataResidencyOption {
   value: string;
@@ -22,12 +20,7 @@ export const DEFAULT_DATA_RESIDENCY_OPTIONS: DataResidencyOption[] = [
 /** GET `{apiUrl}/clients/settings-meta` (e.g. …/admin/clients/settings-meta). */
 @Injectable({ providedIn: 'root' })
 export class ClientSettingsMetaService {
-  private readonly settingsMetaUrl: string;
-
-  constructor(private http: HttpClient) {
-    const base = environment.apiUrl.replace(/\/$/, '');
-    this.settingsMetaUrl = `${base}/clients/settings-meta`;
-  }
+  constructor(private api: ApiService) {}
 
   async fetchMeta(): Promise<ClientSettingsMeta> {
     const token = localStorage.getItem('accessToken');
@@ -36,11 +29,7 @@ export class ClientSettingsMetaService {
     }
 
     try {
-      const body = await firstValueFrom(
-        this.http.get<unknown>(this.settingsMetaUrl, {
-          headers: new HttpHeaders({ Authorization: `Bearer ${token}` })
-        })
-      );
+      const body = await this.api.getClientSettingsMeta(token);
       return normalizeClientSettingsMeta(body);
     } catch {
       return { dataResidencyOptions: [...DEFAULT_DATA_RESIDENCY_OPTIONS] };

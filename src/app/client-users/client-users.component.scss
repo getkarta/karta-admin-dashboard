@@ -4,20 +4,52 @@
   width: 100%;
   max-width: 100%;
 
-  .head {
-    font-size: 22px;
-    font-weight: 700;
-    line-height: 1.25;
-    letter-spacing: 0.01em;
-    color: #1d1f2c;
-    margin-bottom: 6px;
-  }
-
   .subtext {
     color: $color-text-secondary;
     font-size: 14px;
+    margin-top: 0;
     margin-bottom: 14px;
     max-width: 720px;
+  }
+}
+
+.user-info-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 20px;
+  margin-bottom: 0;
+}
+
+.user-info-page-head__title {
+  margin: 0;
+  padding: 0;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  color: #1d1f2c;
+}
+
+.user-info-page-head__client {
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: $color-muted;
+  letter-spacing: 0.01em;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(100%, 360px);
+
+  @media (max-width: 560px) {
+    flex: 1 1 100%;
+    text-align: left;
+    max-width: 100%;
   }
 }
 
@@ -48,42 +80,6 @@
   box-shadow: 0 12px 24px -4px #919eab1f;
 }
 
-.clients-card__top {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 12px;
-  padding: 20px 20px 4px;
-}
-
-.clients-card__top--with-action {
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  padding-bottom: 16px;
-  border-bottom: 1px solid $color-medium-gray;
-}
-
-.clients-card__top-title {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-}
-
-.clients-card__top h2 {
-  color: $color-primary;
-  font-size: 20px;
-  font-weight: 700;
-  margin: 0;
-  padding: 0;
-  line-height: 1.2;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .add-toolbar__btn {
   margin: 0;
   flex-shrink: 0;
@@ -92,6 +88,20 @@
 .clients-card__search {
   padding: 12px 20px 16px;
   border-bottom: 1px solid $color-medium-gray;
+}
+
+.clients-card__search-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+}
+
+.clients-card__search-row .client-search {
+  flex: 1 1 220px;
+  min-width: 0;
+  width: auto;
 }
 
 .client-search {

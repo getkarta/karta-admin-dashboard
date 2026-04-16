@@ -1,8 +1,4 @@
-import {
-  HttpClient,
-  HttpErrorResponse,
-  HttpHeaders
-} from '@angular/common/http';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   Component,
   ElementRef,
@@ -12,15 +8,13 @@ import {
 } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
-
 import { ClientRow } from '../clients/clients.component';
-import { environment } from '../../config/environment';
 import {
   ClientSettingsMetaService,
   DEFAULT_DATA_RESIDENCY_OPTIONS,
   DataResidencyOption
 } from '../services/client-settings-meta.service';
+import { ApiService } from '../services/api.service';
 
 @Component({
   selector: 'app-client-form',
@@ -156,12 +150,6 @@ export class ClientFormComponent implements OnInit {
 
   clientForm: FormGroup;
 
-  /**
-   * Base `…/admin`. Client endpoints:
-   * POST `…/clients`, PUT `…/clients/{clientCode}`; single-client GET uses `…/clients/:code` when needed.
-   */
-  private readonly apiBase = environment.apiUrl.replace(/\/$/, '');
-
   /** From `navigate(..., { state: { flashPricingError } })` after create + billing PUT failure. */
   private pendingPricingRouteFlash = '';
 
@@ -169,7 +157,7 @@ export class ClientFormComponent implements OnInit {
     private fb: FormBuilder,
     private route: ActivatedRoute,
     private router: Router,
-    private http: HttpClient,
+    private api: ApiService,
     private clientSettingsMeta: ClientSettingsMetaService
   ) {
     const nav = this.router.getCurrentNavigation();
@@ -527,11 +515,10 @@ export class ClientFormComponent implements OnInit {
     }
     await this.hydrateResidencyOptionsOnly();
     try {
-      const res = await firstValueFrom(
-        this.http.get<any>(`${this.apiBase}/clients/${this.clientCode}`, {
-          headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` })
-        })
-      );
+      const res = (await this.api.getClientByCode(
+        this.clientCode,
+        accessToken
+      )) as any;
       const raw = res?.client ?? res;
       if (!raw) {
         this.errorMessage = 'Client not found.';
@@ -646,21 +633,13 @@ export class ClientFormComponent implements OnInit {
         return;
       }
 
-      const createRes = await firstValueFrom(
-        this.http.post<unknown>(
-          `${this.apiBase}/clients`,
-          {
-            clientName: formValue.clientName,
-            dataResidency: formValue.dataResidency,
-            voiceConcurrency
-          },
-          {
-            headers: new HttpHeaders({
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            })
-          }
-        )
+      const createRes = await this.api.createClient(
+        {
+          clientName: formValue.clientName,
+          dataResidency: formValue.dataResidency,
+          voiceConcurrency
+        },
+        accessToken
       );
 
       const newCode = this.extractClientCodeFromCreateResponse(createRes);
@@ -851,17 +830,7 @@ export class ClientFormComponent implements OnInit {
     message?: string;
     billing?: Record<string, unknown>;
   }> {
-    return await firstValueFrom(
-      this.http.put<{
-        message?: string;
-        billing?: Record<string, unknown>;
-      }>(`${this.apiBase}/billing/billing`, body, {
-        headers: new HttpHeaders({
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        })
-      })
-    );
+    return this.api.putBillingBilling(body, accessToken);
   }
 
   async savePricing(): Promise<void> {
@@ -1014,22 +983,15 @@ export class ClientFormComponent implements OnInit {
     this.pricingSuccessMessage = '';
 
     try {
-      await firstValueFrom(
-        this.http.put(
-          `${this.apiBase}/clients/${this.clientCode}`,
-          {
-            clientName: formValue.clientName,
-            enabledAgents: formValue.enabledAgents,
-            dataResidency: formValue.dataResidency,
-            voiceConcurrency
-          },
-          {
-            headers: new HttpHeaders({
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            })
-          }
-        )
+      await this.api.updateClient(
+        this.clientCode,
+        {
+          clientName: formValue.clientName,
+          enabledAgents: formValue.enabledAgents,
+          dataResidency: formValue.dataResidency,
+          voiceConcurrency
+        },
+        accessToken
       );
 
       const billingRes = await this.putBillingBilling(

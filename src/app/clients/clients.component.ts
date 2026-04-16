@@ -1,14 +1,8 @@
-import {
-  HttpClient,
-  HttpErrorResponse,
-  HttpHeaders,
-  HttpParams
-} from '@angular/common/http';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
 
-import { environment } from '../../config/environment';
+import { ApiService } from '../services/api.service';
 
 export interface BillingInfo {
   tier?: string;
@@ -51,7 +45,6 @@ export class ClientsComponent implements OnInit {
   pageIndex = 0;
   pageSize = 10;
   readonly pageSizeOptions: number[] = [5, 10, 25, 50];
-  private readonly apiBase = environment.apiUrl.replace(/\/$/, '');
   /**
    * Client list: GET {apiBase}/clients?includeArchived=true
    * (see also GET …/clients and GET …/clients?archivedOnly=true).
@@ -61,7 +54,7 @@ export class ClientsComponent implements OnInit {
   /** Shown in the action banner after redirect from create when client code is missing from POST response. */
   private pendingListRouteFlash = '';
   constructor(
-    private http: HttpClient,
+    private api: ApiService,
     private router: Router,
     private cdr: ChangeDetectorRef
   ) {
@@ -260,14 +253,12 @@ export class ClientsComponent implements OnInit {
       return;
     }
 
-    const headers = new HttpHeaders({
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
-    });
-    const url = `${this.apiBase}/clients/${encodeURIComponent(client.clientCode)}`;
-
     try {
-      const body = await this.unarchiveClientRequest(url, headers);
+      const body = await this.api.putClientArchiveState(
+        client.clientCode,
+        false,
+        accessToken
+      );
       this.loadError = '';
       this.actionMessage =
         body?.message?.trim() ||
@@ -280,21 +271,6 @@ export class ClientsComponent implements OnInit {
       this.loadError = '';
       this.actionMessage = this.describeUnarchiveError(error);
     }
-  }
-
-  /** PUT /admin/clients/:code — body `{ isArchived: false }` per API. */
-  private async unarchiveClientRequest(
-    url: string,
-    headers: HttpHeaders
-  ): Promise<{ message?: string; client?: unknown } | null> {
-    const res = await firstValueFrom(
-      this.http.put<{ message?: string; client?: unknown }>(
-        url,
-        { isArchived: false },
-        { headers, observe: 'response' }
-      )
-    );
-    return res.body;
   }
 
   private describeUnarchiveError(error: unknown): string {
@@ -329,14 +305,12 @@ export class ClientsComponent implements OnInit {
       return;
     }
 
-    const headers = new HttpHeaders({
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
-    });
-    const url = `${this.apiBase}/clients/${encodeURIComponent(client.clientCode)}`;
-
     try {
-      const archiveBody = await this.archiveClientRequest(url, headers);
+      const archiveBody = await this.api.putClientArchiveState(
+        client.clientCode,
+        true,
+        accessToken
+      );
       this.loadError = '';
       this.actionMessage =
         archiveBody?.message?.trim() ||
@@ -352,21 +326,6 @@ export class ClientsComponent implements OnInit {
       this.loadError = '';
       this.actionMessage = this.describeArchiveError(error);
     }
-  }
-
-  /** PUT /admin/clients/:code — body `{ isArchived: true }` per API. */
-  private async archiveClientRequest(
-    url: string,
-    headers: HttpHeaders
-  ): Promise<{ message?: string; client?: unknown } | null> {
-    const res = await firstValueFrom(
-      this.http.put<{ message?: string; client?: unknown }>(
-        url,
-        { isArchived: true },
-        { headers, observe: 'response' }
-      )
-    );
-    return res.body;
   }
 
   private describeArchiveError(error: unknown): string {
@@ -398,15 +357,7 @@ export class ClientsComponent implements OnInit {
     this.loadError = '';
 
     try {
-      const listParams = new HttpParams().set('includeArchived', 'true');
-      const response = await firstValueFrom(
-        this.http.get<any>(`${this.apiBase}/clients`, {
-          headers: new HttpHeaders({
-            Authorization: `Bearer ${accessToken}`
-          }),
-          params: listParams
-        })
-      );
+      const response = await this.api.getClientsList(accessToken);
 
       const rows = this.extractClientRows(response);
       this.clients = this.mergeApiRowsWithLocallyArchived(rows);
@@ -592,7 +543,6 @@ export class ClientsComponent implements OnInit {
       return;
     }
 
-    const headers = new HttpHeaders({ Authorization: `Bearer ${token}` });
     const counts = new Map<string, number>();
     const batchSize = 8;
 
@@ -601,12 +551,7 @@ export class ClientsComponent implements OnInit {
       await Promise.all(
         slice.map(async (code) => {
           try {
-            const res = await firstValueFrom(
-              this.http.get<{ users?: unknown[] }>(
-                `${this.apiBase}/clients/${encodeURIComponent(code)}/users`,
-                { headers }
-              )
-            );
+            const res = await this.api.getClientUsers(code, token);
             counts.set(code, Array.isArray(res.users) ? res.users.length : 0);
           } catch {
             // keep list-derived count if any; otherwise unchanged

@@ -1,10 +1,8 @@
 import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Subscription } from 'rxjs';
-import { firstValueFrom } from 'rxjs';
 
-import { environment } from '../../config/environment';
+import { ApiService } from '../services/api.service';
 
 export type ClientUserRow = {
   email: string;
@@ -38,13 +36,12 @@ export class ClientUsersComponent implements OnInit, OnDestroy {
   addError = '';
   addingUser = false;
 
-  private readonly apiBase = environment.apiUrl.replace(/\/$/, '');
   private routeSub?: Subscription;
 
   constructor(
     private route: ActivatedRoute,
     private router: Router,
-    private http: HttpClient,
+    private api: ApiService,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -178,19 +175,8 @@ export class ClientUsersComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const enc = encodeURIComponent(code);
     try {
-      const res = await firstValueFrom(
-        this.http.get<{
-          users?: Array<{
-            email?: string;
-            role?: string;
-            createdAt?: string;
-          }>;
-        }>(`${this.apiBase}/clients/${enc}/users`, {
-          headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` })
-        })
-      );
+      const res = await this.api.getClientUsers(code, accessToken);
       const raw = res.users ?? [];
       this.userRows = raw.map((u) => ({
         email: (u.email ?? '').trim() || '—',
@@ -236,21 +222,13 @@ export class ClientUsersComponent implements OnInit, OnDestroy {
         return;
       }
 
-      await firstValueFrom(
-        this.http.post(
-          `${this.apiBase}/users`,
-          {
-            email,
-            password: password.trim(),
-            clientCode
-          },
-          {
-            headers: new HttpHeaders({
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            })
-          }
-        )
+      await this.api.createUser(
+        {
+          email,
+          password: password.trim(),
+          clientCode
+        },
+        accessToken
       );
 
       this.closeAddDialog();
