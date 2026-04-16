@@ -124,7 +124,7 @@
               <button
                 type="button"
                 class="users-count-btn"
-                (click)="openUsersPreview(client)"
+                (click)="goToClientUsers(client)"
                 [attr.aria-label]="'View users for ' + client.clientName + ', ' + userCountFor(client) + ' users'">
                 {{ userCountFor(client) }}
               </button>
@@ -211,40 +211,4 @@
     </div>
   </section>
 
-  <div class="modal-overlay" *ngIf="usersPreviewOpen" (click)="closeUsersPreview()">
-    <div class="modal-box modal-box--users-preview" (click)="$event.stopPropagation()">
-      <div class="modal-header">
-        <h3 class="modal-title">Users</h3>
-        <button type="button" class="modal-close" aria-label="Close" (click)="closeUsersPreview()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p class="users-preview__sub">{{ usersPreviewClientName }} · {{ usersPreviewClientCode }}</p>
-        <p class="users-preview__hint">Members under this client.</p>
-        <p *ngIf="usersPreviewLoading">Loading users...</p>
-        <p class="message message--error" *ngIf="!usersPreviewLoading && usersPreviewError">{{ usersPreviewError }}</p>
-        <div *ngIf="!usersPreviewLoading && !usersPreviewError && usersPreviewRows.length === 0" class="users-preview__empty">
-          No users listed for this client.
-        </div>
-        <table class="users-preview-table" *ngIf="!usersPreviewLoading && usersPreviewRows.length > 0">
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Added</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let u of usersPreviewRows">
-              <td>{{ u.email }}</td>
-              <td>{{ u.role }}</td>
-              <td>{{ u.createdAt | date:'short' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="button" (click)="closeUsersPreview()">Close</button>
-      </div>
-    </div>
-  </div>
 </div>

@@ -60,14 +60,6 @@ export class ClientsComponent implements OnInit {
   private static readonly ARCHIVED_STORAGE_KEY = 'kartaAdminArchivedClientRows';
   /** Shown in the action banner after redirect from create when client code is missing from POST response. */
   private pendingListRouteFlash = '';
-  usersPreviewOpen = false;
-  usersPreviewLoading = false;
-  usersPreviewError = '';
-  usersPreviewClientName = '';
-  usersPreviewClientCode = '';
-  usersPreviewRows: Array<{ email: string; role: string; createdAt?: string }> =
-    [];
-
   constructor(
     private http: HttpClient,
     private router: Router,
@@ -130,55 +122,11 @@ export class ClientsComponent implements OnInit {
     return 0;
   }
 
-  closeUsersPreview(): void {
-    this.usersPreviewOpen = false;
-    this.usersPreviewLoading = false;
-    this.usersPreviewError = '';
-    this.usersPreviewRows = [];
-    this.usersPreviewClientName = '';
-    this.usersPreviewClientCode = '';
-  }
-
-  async openUsersPreview(client: ClientRow): Promise<void> {
-    this.usersPreviewClientName = client.clientName;
-    this.usersPreviewClientCode = client.clientCode;
-    this.usersPreviewOpen = true;
-    this.usersPreviewLoading = true;
-    this.usersPreviewError = '';
-    this.usersPreviewRows = [];
-
-    const accessToken = localStorage.getItem('accessToken');
-    if (!accessToken) {
-      this.usersPreviewLoading = false;
-      this.usersPreviewError = 'Session expired. Please log in again.';
-      return;
-    }
-
-    const code = encodeURIComponent(client.clientCode);
-    try {
-      const res = await firstValueFrom(
-        this.http.get<{
-          users?: Array<{
-            email?: string;
-            role?: string;
-            createdAt?: string;
-          }>;
-        }>(`${this.apiBase}/clients/${code}/users`, {
-          headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` })
-        })
-      );
-      const raw = res.users ?? [];
-      this.usersPreviewRows = raw.map((u) => ({
-        email: (u.email ?? '').trim() || '—',
-        role: (u.role ?? '').trim() || '—',
-        createdAt: u.createdAt
-      }));
-    } catch (error) {
-      console.error(error);
-      this.usersPreviewError = 'Unable to load users for this client.';
-    } finally {
-      this.usersPreviewLoading = false;
-    }
+  /** Full-page User information (directory-style list + add user). */
+  goToClientUsers(client: ClientRow): void {
+    void this.router.navigate(['/clients', client.clientCode, 'users'], {
+      state: { clientName: client.clientName }
+    });
   }
 
   get emptyDirectoryHint(): string {

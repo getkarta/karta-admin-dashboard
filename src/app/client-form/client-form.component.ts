@@ -42,9 +42,6 @@ export class ClientFormComponent implements OnInit {
   @ViewChild('residencyDropdownRoot')
   residencyDropdownRoot?: ElementRef<HTMLElement>;
 
-  @ViewChild('deleteUserEmailDropdownRoot')
-  deleteUserEmailDropdownRoot?: ElementRef<HTMLElement>;
-
   /** Custom menu: native select dropdown is OS-drawn (width/corners misalign). */
   dataResidencyMenuOpen = false;
 
@@ -80,37 +77,6 @@ export class ClientFormComponent implements OnInit {
   errorMessage = '';
   successMessage = '';
   isSubmitting = false;
-
-  newUserEmail = '';
-  newUserPassword = '';
-  userErrorMessage = '';
-  userSuccessMessage = '';
-  isAddingUser = false;
-  clientUsers: Array<{
-    id: string;
-    email: string;
-    role: string;
-    createdAt?: string;
-  }> = [];
-  isLoadingUsers = false;
-  showAddUserModal = false;
-
-  showDeleteUserModal = false;
-  deleteUserEmail = '';
-  deleteUserEmailMenuOpen = false;
-  deleteUserErrorMessage = '';
-  isDeletingUser = false;
-
-  showEditUserModal = false;
-  /** Target user id for PUT …/clients/{clientCode}/users/{userId} */
-  editUserId = '';
-  /** Original address (read-only in the modal). */
-  editUserCurrentEmail = '';
-  /** Sent as `email` on PUT …/users/{userId}. */
-  editUserNewEmail = '';
-  editUserNewPassword = '';
-  editUserErrorMessage = '';
-  isUpdatingUser = false;
 
   // Pricing: PUT /admin/billing/billing — body: clientCode, tier, allowNegativeBalance, customPricing, baseCreditUsage
   pricingErrorMessage = '';
@@ -237,11 +203,6 @@ export class ClientFormComponent implements OnInit {
         this.dataResidencyMenuOpen = false;
       }
     }
-    if (this.deleteUserEmailMenuOpen) {
-      if (!this.deleteUserEmailDropdownRoot?.nativeElement?.contains(t)) {
-        this.deleteUserEmailMenuOpen = false;
-      }
-    }
     const el = ev.target as HTMLElement;
     if (this.billingTierMenuOpen && !el.closest('.billing-tier-dd')) {
       this.billingTierMenuOpen = false;
@@ -254,12 +215,8 @@ export class ClientFormComponent implements OnInit {
   @HostListener('document:keydown.escape')
   onEscape(): void {
     this.dataResidencyMenuOpen = false;
-    this.deleteUserEmailMenuOpen = false;
     this.billingTierMenuOpen = false;
     this.pricingDd = null;
-    if (this.showDeleteUserModal) {
-      this.closeDeleteUserModal();
-    }
   }
 
   toggleDataResidencyMenu(ev: MouseEvent): void {
@@ -276,25 +233,6 @@ export class ClientFormComponent implements OnInit {
 
   isDataResidencySelected(value: string): boolean {
     return this.clientForm.get('dataResidency')?.value === value;
-  }
-
-  get deleteUserEmailDisplayLabel(): string {
-    const e = (this.deleteUserEmail ?? '').trim();
-    return e || 'Select a user';
-  }
-
-  toggleDeleteUserEmailMenu(ev: MouseEvent): void {
-    ev.stopPropagation();
-    this.deleteUserEmailMenuOpen = !this.deleteUserEmailMenuOpen;
-  }
-
-  selectDeleteUserEmail(email: string): void {
-    this.deleteUserEmail = email;
-    this.deleteUserEmailMenuOpen = false;
-  }
-
-  isDeleteUserEmailSelected(email: string): boolean {
-    return (this.deleteUserEmail ?? '').trim() === email.trim();
   }
 
   get billingTierDisplayLabel(): string {
@@ -451,7 +389,6 @@ export class ClientFormComponent implements OnInit {
     } else {
       await this.loadClientByCode();
     }
-    await this.loadClientUsers();
   }
 
   private applyDirectoryViewOnlyMode(): void {
@@ -478,19 +415,14 @@ export class ClientFormComponent implements OnInit {
     return this.clientPageViewOnly || (this.isEditMode && !this.pageEditUnlocked);
   }
 
-  /** Add / delete / row-edit users only after Edit is clicked (never in directory view). */
-  get canManageClientUsers(): boolean {
-    return this.pageEditUnlocked && !this.clientPageViewOnly;
-  }
-
   get clientFormPageDescription(): string {
     if (this.clientPageViewOnly) {
-      return 'Read-only: review basic information, users, and pricing below. Nothing on this page can be changed.';
+      return 'Read-only: review basic information and pricing below. Nothing on this page can be changed. Add or manage users from the Clients directory (user count).';
     }
     if (this.isEditMode) {
       return this.pageEditUnlocked
-        ? 'You are editing this client. Use Save under Pricing & Billing to apply client details and pricing together, or Cancel to discard changes. User actions (add, delete, edit) are available while editing.'
-        : 'Review client details, users, and pricing. Click Edit above Basic information to change anything—including users—then use Save and Cancel under Pricing & Billing to apply or discard all edits together.';
+        ? 'You are editing this client. Use Save under Pricing & Billing to apply client details and pricing together, or Cancel to discard changes.'
+        : 'Review client details and pricing. Click Edit above Basic information to make changes, then use Save and Cancel under Pricing & Billing to apply or discard edits together.';
     }
     return 'Create a new client record. Configure optional pricing below; it is saved when you create the client. Agents can be enabled after the client is created.';
   }
@@ -786,268 +718,6 @@ export class ClientFormComponent implements OnInit {
     }
   }
 
-  async addUser(): Promise<void> {
-    if (!this.canManageClientUsers) {
-      return;
-    }
-    if (!this.newUserEmail.trim() || !this.newUserPassword.trim()) {
-      this.userErrorMessage = 'Email and password are required.';
-      return;
-    }
-  
-    if (this.newUserPassword.trim().length < 6) {
-      this.userErrorMessage = 'Password must be at least 6 characters long.';
-      return;
-    }
-  
-    this.isAddingUser = true;
-    this.userErrorMessage = '';
-    this.userSuccessMessage = '';
-  
-    try {
-      const accessToken = localStorage.getItem('accessToken');
-      if (!accessToken) {
-        this.userErrorMessage = 'Session expired. Please log in again.';
-        return;
-      }
-
-      await firstValueFrom(
-        this.http.post(
-          `${this.apiBase}/users`,
-          {
-            email: this.newUserEmail.trim(),
-            password: this.newUserPassword,
-            clientCode: this.clientCode
-          },
-          {
-            headers: new HttpHeaders({
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            })
-          }
-        )
-      );
-  
-      this.userSuccessMessage = 'User added successfully.';
-      this.newUserEmail = '';
-      this.newUserPassword = '';
-      this.showAddUserModal = false;
-      await this.loadClientUsers();
-    } catch (error) {
-      console.error(error);
-      this.userErrorMessage = (error as any)?.error?.message ?? 'Unable to add user right now.';
-    } finally {
-      this.isAddingUser = false;
-    }
-  }
-
-  openAddUserModal(): void {
-    if (!this.canManageClientUsers) return;
-    this.closeDeleteUserModal();
-    this.userErrorMessage = '';
-    this.userSuccessMessage = '';
-    this.showAddUserModal = true;
-  }
-
-  closeAddUserModal(): void {
-    this.showAddUserModal = false;
-    this.newUserEmail = '';
-    this.newUserPassword = '';
-    this.userErrorMessage = '';
-    this.userSuccessMessage = '';
-  }
-
-  openDeleteUserModal(): void {
-    if (!this.canManageClientUsers) return;
-    this.showAddUserModal = false;
-    this.showEditUserModal = false;
-    this.userErrorMessage = '';
-    this.deleteUserErrorMessage = '';
-    this.deleteUserEmailMenuOpen = false;
-    this.deleteUserEmail = this.clientUsers[0]?.email ?? '';
-    this.showDeleteUserModal = true;
-  }
-
-  closeDeleteUserModal(): void {
-    this.showDeleteUserModal = false;
-    this.deleteUserEmail = '';
-    this.deleteUserEmailMenuOpen = false;
-    this.deleteUserErrorMessage = '';
-  }
-
-  async deleteUser(): Promise<void> {
-    if (!this.canManageClientUsers) return;
-    const email = this.deleteUserEmail.trim();
-    if (!email) {
-      this.deleteUserErrorMessage = 'Select a user to remove.';
-      return;
-    }
-    if (
-      !window.confirm(
-        `Remove ${email} from this client? They will lose access.`
-      )
-    ) {
-      return;
-    }
-
-    this.isDeletingUser = true;
-    this.deleteUserErrorMessage = '';
-
-    try {
-      const accessToken = localStorage.getItem('accessToken');
-      if (!accessToken) {
-        this.deleteUserErrorMessage = 'Session expired. Please log in again.';
-        return;
-      }
-
-      const row = this.clientUsers.find(
-        (u) => u.email.trim().toLowerCase() === email.toLowerCase()
-      );
-      const userId = row?.id?.trim();
-      if (!userId) {
-        this.deleteUserErrorMessage =
-          'Could not resolve this user’s id. Reload the page and try again.';
-        return;
-      }
-
-      await firstValueFrom(
-        this.http.delete<{
-          message?: string;
-          userId?: string;
-        }>(`${this.apiBase}/clients/${this.clientCode}/users/${encodeURIComponent(userId)}`, {
-          headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` })
-        })
-      );
-
-      this.closeDeleteUserModal();
-      await this.loadClientUsers();
-    } catch (error) {
-      console.error(error);
-      this.deleteUserErrorMessage =
-        (error as any)?.error?.message ?? 'Unable to delete user right now.';
-    } finally {
-      this.isDeletingUser = false;
-    }
-  }
-
-  openEditUserModal(u: { id: string; email: string; role: string }): void {
-    if (!this.canManageClientUsers) return;
-    this.closeDeleteUserModal();
-    this.userErrorMessage = '';
-    this.editUserErrorMessage = '';
-    const id = (u.id ?? '').trim();
-    if (!id) {
-      this.userErrorMessage =
-        'Cannot edit this user: missing id from the server. Reload the page and try again.';
-      return;
-    }
-    this.editUserId = id;
-    this.editUserCurrentEmail = u.email;
-    this.editUserNewEmail = u.email;
-    this.editUserNewPassword = '';
-    this.showEditUserModal = true;
-  }
-
-  closeEditUserModal(): void {
-    this.showEditUserModal = false;
-    this.editUserId = '';
-    this.editUserCurrentEmail = '';
-    this.editUserNewEmail = '';
-    this.editUserNewPassword = '';
-    this.editUserErrorMessage = '';
-  }
-
-  async updateUser(): Promise<void> {
-    if (!this.canManageClientUsers) return;
-    if (!this.editUserId.trim()) {
-      this.editUserErrorMessage = 'User id is missing. Close this dialog and try again.';
-      return;
-    }
-    const email = this.editUserNewEmail.trim();
-    if (!email) {
-      this.editUserErrorMessage = 'New email is required.';
-      return;
-    }
-    const pwd = this.editUserNewPassword.trim();
-    if (pwd && pwd.length < 6) {
-      this.editUserErrorMessage =
-        'New password must be at least 6 characters, or leave blank to keep the current password.';
-      return;
-    }
-
-    this.isUpdatingUser = true;
-    this.editUserErrorMessage = '';
-
-    try {
-      const accessToken = localStorage.getItem('accessToken');
-      if (!accessToken) {
-        this.editUserErrorMessage = 'Session expired. Please log in again.';
-        return;
-      }
-
-      const body: { email: string; password?: string } = { email };
-      if (pwd) {
-        body.password = pwd;
-      }
-
-      await firstValueFrom(
-        this.http.put<{
-          message?: string;
-          user?: { id: string; email: string; role: string; createdAt: string };
-        }>(
-          `${this.apiBase}/clients/${this.clientCode}/users/${encodeURIComponent(this.editUserId.trim())}`,
-          body,
-          {
-            headers: new HttpHeaders({
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            })
-          }
-        )
-      );
-
-      this.closeEditUserModal();
-      await this.loadClientUsers();
-    } catch (error) {
-      console.error(error);
-      this.editUserErrorMessage =
-        (error as any)?.error?.message ?? 'Unable to update user right now.';
-    } finally {
-      this.isUpdatingUser = false;
-    }
-  }
-
-  async loadClientUsers(): Promise<void> {
-    const accessToken = localStorage.getItem('accessToken');
-    if (!accessToken || !this.clientCode) return;
-    this.isLoadingUsers = true;
-    try {
-      const res = await firstValueFrom(
-        this.http.get<{
-          users: Array<{
-            id?: string;
-            _id?: string;
-            email: string;
-            role: string;
-            createdAt?: string;
-          }>;
-        }>(`${this.apiBase}/clients/${this.clientCode}/users`, {
-          headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` })
-        })
-      );
-      this.clientUsers = (res.users ?? []).map((u) => ({
-        id: String(u.id ?? u._id ?? '').trim(),
-        email: u.email,
-        role: u.role,
-        createdAt: u.createdAt
-      }));
-    } catch {
-      this.clientUsers = [];
-    } finally {
-      this.isLoadingUsers = false;
-    }
-  }
-
   addPricingRule(): void {
     if (this.pageFieldsReadOnly) return;
     this.pricingDd = null;
@@ -1298,9 +968,6 @@ export class ClientFormComponent implements OnInit {
     this.dataResidencyMenuOpen = false;
     this.billingTierMenuOpen = false;
     this.pricingDd = null;
-    this.closeAddUserModal();
-    this.closeDeleteUserModal();
-    this.closeEditUserModal();
   }
 
   async saveEntireEditPage(): Promise<void> {
@@ -1378,9 +1045,6 @@ export class ClientFormComponent implements OnInit {
 
       this.pageEditUnlocked = false;
       this.editPageCancelSnapshot = null;
-      this.closeAddUserModal();
-      this.closeDeleteUserModal();
-      this.closeEditUserModal();
       this.successMessage = 'Client and pricing saved successfully.';
       const billingMsg = billingRes?.message?.trim();
       if (billingMsg) {
