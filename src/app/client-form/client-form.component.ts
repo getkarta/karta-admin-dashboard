@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   Component,
   ElementRef,
@@ -8,15 +8,13 @@ import {
 } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
-
 import { ClientRow } from '../clients/clients.component';
-import { environment } from '../../config/environment';
 import {
   ClientSettingsMetaService,
   DEFAULT_DATA_RESIDENCY_OPTIONS,
   DataResidencyOption
 } from '../services/client-settings-meta.service';
+import { ApiService } from '../services/api.service';
 
 @Component({
   selector: 'app-client-form',
@@ -25,53 +23,54 @@ import {
   styleUrl: './client-form.component.scss'
 })
 export class ClientFormComponent implements OnInit {
+  /** Treat common `view` query values as directory read-only mode. */
+  private static isDirectoryViewQuery(
+    value: string | null | undefined
+  ): boolean {
+    if (value == null) {
+      return false;
+    }
+    const v = String(value).trim().toLowerCase();
+    return v === '1' || v === 'true' || v === 'yes' || v === 'readonly';
+  }
   @ViewChild('residencyDropdownRoot')
   residencyDropdownRoot?: ElementRef<HTMLElement>;
-
-  @ViewChild('editUserRoleDropdownRoot')
-  editUserRoleDropdownRoot?: ElementRef<HTMLElement>;
-
-  @ViewChild('deleteUserEmailDropdownRoot')
-  deleteUserEmailDropdownRoot?: ElementRef<HTMLElement>;
 
   /** Custom menu: native select dropdown is OS-drawn (width/corners misalign). */
   dataResidencyMenuOpen = false;
 
   isEditMode = false;
+  /** Opened from directory in view mode (?view=1); all edits disabled. */
+  clientPageViewOnly = false;
+  /**
+   * Update Client: fields start read-only; **Edit** unlocks editing until **Save** or **Cancel**
+   * on the page toolbar. Create / directory view ignore this flag.
+   */
+  pageEditUnlocked = false;
+  /** Snapshot for **Cancel** while `pageEditUnlocked` is true (edit mode only). */
+  private editPageCancelSnapshot: {
+    clientName: string;
+    enabledAgents: string[];
+    dataResidency: string;
+    voiceConcurrency: number;
+    billingTier: string;
+    allowNegativeBalance: boolean;
+    baseCreditUsagePromptBuilder: boolean;
+    pricingRules: Array<{
+      featureCode: string;
+      unitType: string;
+      creditPerUnit: number;
+      rounding: string;
+      intervalSeconds?: number;
+      minimumSeconds?: number;
+    }>;
+  } | null = null;
+  /** Save (client PUT + billing PUT) from the actions below Pricing & Billing. */
+  isSavingEntirePage = false;
   clientCode = '';
   errorMessage = '';
   successMessage = '';
   isSubmitting = false;
-
-  newUserEmail = '';
-  newUserPassword = '';
-  userErrorMessage = '';
-  userSuccessMessage = '';
-  isAddingUser = false;
-  clientUsers: Array<{ email: string; role: string; createdAt?: string }> = [];
-  isLoadingUsers = false;
-  showAddUserModal = false;
-
-  showDeleteUserModal = false;
-  deleteUserEmail = '';
-  deleteUserEmailMenuOpen = false;
-  deleteUserErrorMessage = '';
-  isDeletingUser = false;
-
-  showEditUserModal = false;
-  editUserEmail = '';
-  editUserRole = '';
-  editUserRoleOptions: Array<{ value: string; label: string }> = [];
-  editUserNewPassword = '';
-  editUserErrorMessage = '';
-  isUpdatingUser = false;
-  editUserRoleMenuOpen = false;
-
-  /** Roles offered when editing; current role is always included if not listed. */
-  readonly EDIT_USER_ROLE_OPTIONS = [
-    { value: 'member', label: 'Member' },
-    { value: 'admin', label: 'Admin' }
-  ];
 
   // Pricing: PUT /admin/billing/billing — body: clientCode, tier, allowNegativeBalance, customPricing, baseCreditUsage
   pricingErrorMessage = '';
@@ -151,19 +150,21 @@ export class ClientFormComponent implements OnInit {
 
   clientForm: FormGroup;
 
-  /**
-   * Base `…/admin`. Client endpoints:
-   * POST `…/clients`, PUT `…/clients/{clientCode}`; single-client GET uses `…/clients/:code` when needed.
-   */
-  private readonly apiBase = environment.apiUrl.replace(/\/$/, '');
+  /** From `navigate(..., { state: { flashPricingError } })` after create + billing PUT failure. */
+  private pendingPricingRouteFlash = '';
 
   constructor(
     private fb: FormBuilder,
     private route: ActivatedRoute,
     private router: Router,
-    private http: HttpClient,
+    private api: ApiService,
     private clientSettingsMeta: ClientSettingsMetaService
   ) {
+    const nav = this.router.getCurrentNavigation();
+    const flash = nav?.extras?.state?.['flashPricingError'];
+    if (typeof flash === 'string' && flash.trim()) {
+      this.pendingPricingRouteFlash = flash.trim();
+    }
     this.clientForm = this.fb.group({
       clientName: ['', [Validators.required, Validators.minLength(3)]],
       dataResidency: this.fb.nonNullable.control<string>('global'),
@@ -190,16 +191,6 @@ export class ClientFormComponent implements OnInit {
         this.dataResidencyMenuOpen = false;
       }
     }
-    if (this.editUserRoleMenuOpen) {
-      if (!this.editUserRoleDropdownRoot?.nativeElement?.contains(t)) {
-        this.editUserRoleMenuOpen = false;
-      }
-    }
-    if (this.deleteUserEmailMenuOpen) {
-      if (!this.deleteUserEmailDropdownRoot?.nativeElement?.contains(t)) {
-        this.deleteUserEmailMenuOpen = false;
-      }
-    }
     const el = ev.target as HTMLElement;
     if (this.billingTierMenuOpen && !el.closest('.billing-tier-dd')) {
       this.billingTierMenuOpen = false;
@@ -212,72 +203,24 @@ export class ClientFormComponent implements OnInit {
   @HostListener('document:keydown.escape')
   onEscape(): void {
     this.dataResidencyMenuOpen = false;
-    this.editUserRoleMenuOpen = false;
-    this.deleteUserEmailMenuOpen = false;
     this.billingTierMenuOpen = false;
     this.pricingDd = null;
-    if (this.showDeleteUserModal) {
-      this.closeDeleteUserModal();
-    }
   }
 
   toggleDataResidencyMenu(ev: MouseEvent): void {
     ev.stopPropagation();
-    if (this.isLoadingDataResidencyOptions) return;
+    if (this.pageFieldsReadOnly || this.isLoadingDataResidencyOptions) return;
     this.dataResidencyMenuOpen = !this.dataResidencyMenuOpen;
   }
 
   selectDataResidency(value: string): void {
+    if (this.pageFieldsReadOnly) return;
     this.clientForm.patchValue({ dataResidency: value });
     this.dataResidencyMenuOpen = false;
   }
 
   isDataResidencySelected(value: string): boolean {
     return this.clientForm.get('dataResidency')?.value === value;
-  }
-
-  get editUserRoleDisplayLabel(): string {
-    const v = this.editUserRole ?? '';
-    const opt = this.editUserRoleOptions.find(
-      (o) => o.value.toLowerCase() === v.trim().toLowerCase()
-    );
-    return opt?.label ?? v;
-  }
-
-  toggleEditUserRoleMenu(ev: MouseEvent): void {
-    ev.stopPropagation();
-    this.editUserRoleMenuOpen = !this.editUserRoleMenuOpen;
-  }
-
-  selectEditUserRole(value: string): void {
-    this.editUserRole = value;
-    this.editUserRoleMenuOpen = false;
-  }
-
-  isEditUserRoleSelected(value: string): boolean {
-    return (
-      (this.editUserRole ?? '').trim().toLowerCase() ===
-      value.trim().toLowerCase()
-    );
-  }
-
-  get deleteUserEmailDisplayLabel(): string {
-    const e = (this.deleteUserEmail ?? '').trim();
-    return e || 'Select a user';
-  }
-
-  toggleDeleteUserEmailMenu(ev: MouseEvent): void {
-    ev.stopPropagation();
-    this.deleteUserEmailMenuOpen = !this.deleteUserEmailMenuOpen;
-  }
-
-  selectDeleteUserEmail(email: string): void {
-    this.deleteUserEmail = email;
-    this.deleteUserEmailMenuOpen = false;
-  }
-
-  isDeleteUserEmailSelected(email: string): boolean {
-    return (this.deleteUserEmail ?? '').trim() === email.trim();
   }
 
   get billingTierDisplayLabel(): string {
@@ -289,11 +232,13 @@ export class ClientFormComponent implements OnInit {
 
   toggleBillingTierMenu(ev: MouseEvent): void {
     ev.stopPropagation();
+    if (this.pageFieldsReadOnly) return;
     this.pricingDd = null;
     this.billingTierMenuOpen = !this.billingTierMenuOpen;
   }
 
   selectBillingTier(value: string): void {
+    if (this.pageFieldsReadOnly) return;
     this.billingTier = value;
     this.billingTierMenuOpen = false;
   }
@@ -304,6 +249,7 @@ export class ClientFormComponent implements OnInit {
     field: 'feature' | 'unit' | 'rounding'
   ): void {
     ev.stopPropagation();
+    if (this.pageFieldsReadOnly) return;
     this.billingTierMenuOpen = false;
     if (
       this.pricingDd?.row === row &&
@@ -355,6 +301,7 @@ export class ClientFormComponent implements OnInit {
     field: 'feature' | 'unit' | 'rounding',
     value: string
   ): void {
+    if (this.pageFieldsReadOnly) return;
     const rule = this.pricingRules[row];
     if (!rule) return;
     if (field === 'feature') rule.featureCode = value;
@@ -369,6 +316,9 @@ export class ClientFormComponent implements OnInit {
   }
 
   toggleEnabledAgent(agentValue: string, ev: Event): void {
+    if (this.pageFieldsReadOnly) {
+      return;
+    }
     const checked = (ev.target as HTMLInputElement).checked;
     const ctrl = this.clientForm.get('enabledAgents');
     const current = [...((ctrl?.value as string[] | undefined) ?? [])];
@@ -384,6 +334,12 @@ export class ClientFormComponent implements OnInit {
   ngOnInit(): void {
     const code = this.route.snapshot.paramMap.get('code');
 
+    this.clientPageViewOnly =
+      ClientFormComponent.isDirectoryViewQuery(
+        this.route.snapshot.queryParamMap.get('view')
+      ) ||
+      !!(typeof history !== 'undefined' && history.state?.viewOnly === true);
+
     if (!code) {
       void this.loadDataResidencyOptions();
       return;
@@ -391,14 +347,72 @@ export class ClientFormComponent implements OnInit {
 
     this.isEditMode = true;
     this.clientCode = code;
-    this.loadClientUsers();
 
     const client = history.state?.client as ClientRow | undefined;
-    if (client) {
-      void this.bootstrapEditFormWithClient(client);
-    } else {
-      void this.loadClientByCode();
+    void this.hydrateEditClient(client).then(() => {
+      this.applyDirectoryViewOnlyMode();
+      this.applyPendingPricingRouteFlash();
+    });
+  }
+
+  private applyPendingPricingRouteFlash(): void {
+    if (!this.pendingPricingRouteFlash) {
+      return;
     }
+    this.pricingErrorMessage = this.pendingPricingRouteFlash;
+    this.pendingPricingRouteFlash = '';
+  }
+
+  private async hydrateEditClient(client: ClientRow | undefined): Promise<void> {
+    if (this.isEditMode && !this.clientPageViewOnly) {
+      this.pageEditUnlocked = false;
+      this.editPageCancelSnapshot = null;
+    }
+    if (client) {
+      await this.bootstrapEditFormWithClient(client);
+      // Directory “View” often opens from list rows without full `billing`; reload from API so pricing table matches server.
+      if (this.clientPageViewOnly) {
+        await this.loadClientByCode();
+      }
+    } else {
+      await this.loadClientByCode();
+    }
+  }
+
+  private applyDirectoryViewOnlyMode(): void {
+    if (!this.clientPageViewOnly || !this.isEditMode) {
+      return;
+    }
+    this.pageEditUnlocked = false;
+    this.editPageCancelSnapshot = null;
+    this.clientForm.disable({ emitEvent: false });
+    this.dataResidencyMenuOpen = false;
+    this.billingTierMenuOpen = false;
+    this.pricingDd = null;
+  }
+
+  get clientFormPageTitle(): string {
+    if (this.clientPageViewOnly) {
+      return 'View client';
+    }
+    return this.isEditMode ? 'Update Client' : 'Create Client';
+  }
+
+  /** Basic info + pricing are read-only (directory view, or Update Client before Edit). */
+  get pageFieldsReadOnly(): boolean {
+    return this.clientPageViewOnly || (this.isEditMode && !this.pageEditUnlocked);
+  }
+
+  get clientFormPageDescription(): string {
+    if (this.clientPageViewOnly) {
+      return 'Read-only: review basic information and pricing below. Nothing on this page can be changed. Add or manage users from the Clients directory (user count).';
+    }
+    if (this.isEditMode) {
+      return this.pageEditUnlocked
+        ? 'You are editing this client. Use Save under Pricing & Billing to apply client details and pricing together, or Cancel to discard changes.'
+        : 'Review client details and pricing. Click Edit above Basic information to make changes, then use Save and Cancel under Pricing & Billing to apply or discard edits together.';
+    }
+    return 'Create a new client record. Configure optional pricing below; it is saved when you create the client. Agents can be enabled after the client is created.';
   }
 
   private pickResidencyAndVoiceFromUnknown(
@@ -501,11 +515,10 @@ export class ClientFormComponent implements OnInit {
     }
     await this.hydrateResidencyOptionsOnly();
     try {
-      const res = await firstValueFrom(
-        this.http.get<any>(`${this.apiBase}/clients/${this.clientCode}`, {
-          headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` })
-        })
-      );
+      const res = (await this.api.getClientByCode(
+        this.clientCode,
+        accessToken
+      )) as any;
       const raw = res?.client ?? res;
       if (!raw) {
         this.errorMessage = 'Client not found.';
@@ -550,6 +563,7 @@ export class ClientFormComponent implements OnInit {
     const billing = (client as any)?.billing ?? (client as any)?.bi;
     if (!billing) {
       this.allowNegativeBalance = false;
+      this.pricingRules = [];
       return;
     }
     this.billingTier = (billing.tier && billing.tier !== 'free') ? billing.tier : 'basic';
@@ -561,8 +575,8 @@ export class ClientFormComponent implements OnInit {
       this.baseCreditUsagePromptBuilder = false;
     }
     const cp = billing.customPricing;
+    this.pricingRules = [];
     if (cp && typeof cp === 'object') {
-      this.pricingRules = [];
       for (const [featureCode, unitMap] of Object.entries(cp)) {
         if (!unitMap || typeof unitMap !== 'object') continue;
         for (const [unitType, rule] of Object.entries(unitMap)) {
@@ -581,6 +595,9 @@ export class ClientFormComponent implements OnInit {
   }
 
   async onSubmit(): Promise<void> {
+    if (this.clientPageViewOnly || this.isEditMode) {
+      return;
+    }
     if (this.clientForm.invalid) {
       this.clientForm.markAllAsTouched();
       return;
@@ -598,12 +615,6 @@ export class ClientFormComponent implements OnInit {
 
     const formValue = this.clientForm.getRawValue();
 
-    if (this.isEditMode && (!formValue.enabledAgents || formValue.enabledAgents.length === 0)) {
-      this.errorMessage = 'Select at least one enabled agent before updating this client.';
-      this.isSubmitting = false;
-      return;
-    }
-
     const voiceConcurrency = Number(formValue.voiceConcurrency);
     if (
       !Number.isFinite(voiceConcurrency) ||
@@ -616,281 +627,78 @@ export class ClientFormComponent implements OnInit {
     }
 
     try {
-      if (this.isEditMode) {
-        await firstValueFrom(
-          this.http.put(
-            `${this.apiBase}/clients/${this.clientCode}`,
-            {
-              clientName: formValue.clientName,
-              enabledAgents: formValue.enabledAgents,
-              dataResidency: formValue.dataResidency,
-              voiceConcurrency
-            },
-            {
-              headers: new HttpHeaders({
-                Authorization: `Bearer ${accessToken}`
-              })
-            }
-          )
-        );
-
-        this.successMessage = 'Client updated successfully.';
-      } else {
-        await firstValueFrom(
-          this.http.post(
-            `${this.apiBase}/clients`,
-            {
-              clientName: formValue.clientName,
-              dataResidency: formValue.dataResidency,
-              voiceConcurrency
-            },
-            {
-              headers: new HttpHeaders({
-                Authorization: `Bearer ${accessToken}`
-              })
-            }
-          )
-        );
-
-        this.successMessage = 'Client created successfully.';
+      const pricingErr = this.validatePricingRulesForBilling();
+      if (pricingErr) {
+        this.pricingErrorMessage = pricingErr;
+        return;
       }
+
+      const createRes = await this.api.createClient(
+        {
+          clientName: formValue.clientName,
+          dataResidency: formValue.dataResidency,
+          voiceConcurrency
+        },
+        accessToken
+      );
+
+      const newCode = this.extractClientCodeFromCreateResponse(createRes);
+      if (!newCode) {
+        await this.router.navigate(['/clients'], {
+          state: {
+            listFlashMessage:
+              'Client was created, but the server did not return a client code, so pricing was not saved. Open the client from the list and use Edit to set billing.'
+          }
+        });
+        return;
+      }
+
+      try {
+        await this.putBillingBilling(
+          this.buildBillingPutBody(newCode),
+          accessToken
+        );
+      } catch (billingErr) {
+        console.error(billingErr);
+        const detail =
+          billingErr instanceof HttpErrorResponse
+            ? (typeof billingErr.error?.message === 'string'
+                ? billingErr.error.message
+                : billingErr.statusText)
+            : 'Unknown error';
+        await this.router.navigate(
+          ['/clients', newCode, 'edit'],
+          {
+            state: {
+              client: {
+                clientName: formValue.clientName,
+                clientCode: newCode,
+                enabledAgents: [],
+                status: 'Active',
+                owner: '',
+                createdOn: ''
+              } as ClientRow,
+              flashPricingError: `Client was created, but saving pricing failed (${detail}). Open the client, click Edit, then Save to set billing.`
+            }
+          }
+        );
+        return;
+      }
+
+      this.successMessage =
+        'Client created successfully. Pricing and billing were saved.';
 
       await this.router.navigate(['/clients']);
     } catch (error) {
       console.error(error);
-      this.errorMessage = this.isEditMode
-        ? 'Unable to update client right now.'
-        : 'Unable to create client right now.';
+      this.errorMessage = 'Unable to create client right now.';
     } finally {
       this.isSubmitting = false;
     }
   }
 
-  async addUser(): Promise<void> {
-    if (!this.newUserEmail.trim() || !this.newUserPassword.trim()) {
-      this.userErrorMessage = 'Email and password are required.';
-      return;
-    }
-  
-    if (this.newUserPassword.trim().length < 6) {
-      this.userErrorMessage = 'Password must be at least 6 characters long.';
-      return;
-    }
-  
-    this.isAddingUser = true;
-    this.userErrorMessage = '';
-    this.userSuccessMessage = '';
-  
-    try {
-      const accessToken = localStorage.getItem('accessToken');
-      if (!accessToken) {
-        this.userErrorMessage = 'Session expired. Please log in again.';
-        return;
-      }
-
-      await firstValueFrom(
-        this.http.post(
-          `${this.apiBase}/users`,
-          {
-            email: this.newUserEmail.trim(),
-            password: this.newUserPassword,
-            clientCode: this.clientCode
-          },
-          {
-            headers: new HttpHeaders({
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            })
-          }
-        )
-      );
-  
-      this.userSuccessMessage = 'User added successfully.';
-      this.newUserEmail = '';
-      this.newUserPassword = '';
-      this.showAddUserModal = false;
-      await this.loadClientUsers();
-    } catch (error) {
-      console.error(error);
-      this.userErrorMessage = (error as any)?.error?.message ?? 'Unable to add user right now.';
-    } finally {
-      this.isAddingUser = false;
-    }
-  }
-
-  openAddUserModal(): void {
-    this.closeDeleteUserModal();
-    this.userErrorMessage = '';
-    this.userSuccessMessage = '';
-    this.showAddUserModal = true;
-  }
-
-  closeAddUserModal(): void {
-    this.showAddUserModal = false;
-    this.newUserEmail = '';
-    this.newUserPassword = '';
-    this.userErrorMessage = '';
-    this.userSuccessMessage = '';
-  }
-
-  openDeleteUserModal(): void {
-    this.showAddUserModal = false;
-    this.showEditUserModal = false;
-    this.deleteUserErrorMessage = '';
-    this.deleteUserEmailMenuOpen = false;
-    this.deleteUserEmail = this.clientUsers[0]?.email ?? '';
-    this.showDeleteUserModal = true;
-  }
-
-  closeDeleteUserModal(): void {
-    this.showDeleteUserModal = false;
-    this.deleteUserEmail = '';
-    this.deleteUserEmailMenuOpen = false;
-    this.deleteUserErrorMessage = '';
-  }
-
-  async deleteUser(): Promise<void> {
-    const email = this.deleteUserEmail.trim();
-    if (!email) {
-      this.deleteUserErrorMessage = 'Select a user to remove.';
-      return;
-    }
-    if (
-      !window.confirm(
-        `Remove ${email} from this client? They will lose access.`
-      )
-    ) {
-      return;
-    }
-
-    this.isDeletingUser = true;
-    this.deleteUserErrorMessage = '';
-
-    try {
-      const accessToken = localStorage.getItem('accessToken');
-      if (!accessToken) {
-        this.deleteUserErrorMessage = 'Session expired. Please log in again.';
-        return;
-      }
-
-      await firstValueFrom(
-        this.http.delete(
-          `${this.apiBase}/clients/${this.clientCode}/users/${encodeURIComponent(email)}`,
-          {
-            headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` })
-          }
-        )
-      );
-
-      this.closeDeleteUserModal();
-      await this.loadClientUsers();
-    } catch (error) {
-      console.error(error);
-      this.deleteUserErrorMessage =
-        (error as any)?.error?.message ?? 'Unable to delete user right now.';
-    } finally {
-      this.isDeletingUser = false;
-    }
-  }
-
-  openEditUserModal(u: { email: string; role: string }): void {
-    this.closeDeleteUserModal();
-    this.editUserErrorMessage = '';
-    this.editUserEmail = u.email;
-    const role = (u.role ?? '').trim() || 'member';
-    const base = [...this.EDIT_USER_ROLE_OPTIONS];
-    const hasKnown = base.some((o) => o.value.toLowerCase() === role.toLowerCase());
-    this.editUserRoleOptions = hasKnown
-      ? base
-      : [{ value: role, label: role }, ...base];
-    this.editUserRole = role;
-    this.editUserNewPassword = '';
-    this.editUserRoleMenuOpen = false;
-    this.showEditUserModal = true;
-  }
-
-  closeEditUserModal(): void {
-    this.showEditUserModal = false;
-    this.editUserRoleMenuOpen = false;
-    this.editUserEmail = '';
-    this.editUserRole = '';
-    this.editUserRoleOptions = [];
-    this.editUserNewPassword = '';
-    this.editUserErrorMessage = '';
-  }
-
-  async updateUser(): Promise<void> {
-    if (!this.editUserEmail.trim()) {
-      this.editUserErrorMessage = 'User email is missing.';
-      return;
-    }
-    if (!this.editUserRole.trim()) {
-      this.editUserErrorMessage = 'Role is required.';
-      return;
-    }
-    const pwd = this.editUserNewPassword.trim();
-    if (pwd && pwd.length < 6) {
-      this.editUserErrorMessage = 'New password must be at least 6 characters, or leave blank to keep the current password.';
-      return;
-    }
-
-    this.isUpdatingUser = true;
-    this.editUserErrorMessage = '';
-
-    try {
-      const accessToken = localStorage.getItem('accessToken');
-      if (!accessToken) {
-        this.editUserErrorMessage = 'Session expired. Please log in again.';
-        return;
-      }
-
-      const body: { email: string; clientCode: string; role: string; password?: string } = {
-        email: this.editUserEmail.trim(),
-        clientCode: this.clientCode,
-        role: this.editUserRole.trim()
-      };
-      if (pwd) body.password = pwd;
-
-      await firstValueFrom(
-        this.http.patch(`${this.apiBase}/users`, body, {
-          headers: new HttpHeaders({
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          })
-        })
-      );
-
-      this.closeEditUserModal();
-      await this.loadClientUsers();
-    } catch (error) {
-      console.error(error);
-      this.editUserErrorMessage =
-        (error as any)?.error?.message ?? 'Unable to update user right now.';
-    } finally {
-      this.isUpdatingUser = false;
-    }
-  }
-
-  async loadClientUsers(): Promise<void> {
-    const accessToken = localStorage.getItem('accessToken');
-    if (!accessToken || !this.clientCode) return;
-    this.isLoadingUsers = true;
-    try {
-      const res = await firstValueFrom(
-        this.http.get<{ users: Array<{ email: string; role: string; createdAt?: string }> }>(
-          `${this.apiBase}/clients/${this.clientCode}/users`,
-          { headers: new HttpHeaders({ Authorization: `Bearer ${accessToken}` }) }
-        )
-      );
-      this.clientUsers = res.users ?? [];
-    } catch {
-      this.clientUsers = [];
-    } finally {
-      this.isLoadingUsers = false;
-    }
-  }
-
   addPricingRule(): void {
+    if (this.pageFieldsReadOnly) return;
     this.pricingDd = null;
     this.pricingRules.push({
       featureCode: 'chat',
@@ -901,6 +709,7 @@ export class ClientFormComponent implements OnInit {
   }
 
   removePricingRule(index: number): void {
+    if (this.pageFieldsReadOnly) return;
     this.pricingRules.splice(index, 1);
     if (this.pricingDd?.row === index) {
       this.pricingDd = null;
@@ -909,48 +718,86 @@ export class ClientFormComponent implements OnInit {
     }
   }
 
-  async savePricing(): Promise<void> {
-    const accessToken = localStorage.getItem('accessToken');
-    if (!accessToken) {
-      this.pricingErrorMessage = 'Session expired. Please log in again.';
-      return;
-    }
-
-    const customPricing: Record<string, Record<string, { creditPerUnit: number; unit?: string; rounding?: string; intervalSeconds?: number; minimumSeconds?: number }>> = {};
+  /** Same payload shape as `PUT …/billing/billing` for create + edit flows. */
+  private validatePricingRulesForBilling(): string | null {
     for (const row of this.pricingRules) {
       const creditPerUnit = Number(row.creditPerUnit);
       if (!Number.isFinite(creditPerUnit) || creditPerUnit <= 0) {
-        this.pricingErrorMessage = `Credit per unit must be a positive number for ${row.featureCode} / ${row.unitType}.`;
-        return;
+        return `Credit per unit must be a positive number for ${row.featureCode} / ${row.unitType}.`;
       }
       if (!row.featureCode?.trim() || !row.unitType?.trim()) {
-        this.pricingErrorMessage = 'Feature and unit type are required for each rule.';
-        return;
+        return 'Feature and unit type are required for each rule.';
       }
+    }
+    return null;
+  }
+
+  private buildBillingPutBody(clientCode: string): {
+    clientCode: string;
+    tier: string;
+    allowNegativeBalance: boolean;
+    customPricing: Record<
+      string,
+      Record<
+        string,
+        {
+          creditPerUnit: number;
+          unit?: string;
+          rounding?: string;
+          intervalSeconds?: number;
+          minimumSeconds?: number;
+        }
+      >
+    >;
+    baseCreditUsage: { prompt_builder: boolean };
+  } {
+    const customPricing: Record<
+      string,
+      Record<
+        string,
+        {
+          creditPerUnit: number;
+          unit?: string;
+          rounding?: string;
+          intervalSeconds?: number;
+          minimumSeconds?: number;
+        }
+      >
+    > = {};
+    for (const row of this.pricingRules) {
+      const creditPerUnit = Number(row.creditPerUnit);
       const apiFeatureKey = this.pricingFeatureKeyForApi(row.featureCode);
       if (!customPricing[apiFeatureKey]) customPricing[apiFeatureKey] = {};
-      const rule: { creditPerUnit: number; unit?: string; rounding?: string; intervalSeconds?: number; minimumSeconds?: number } = {
+      const rule: {
+        creditPerUnit: number;
+        unit?: string;
+        rounding?: string;
+        intervalSeconds?: number;
+        minimumSeconds?: number;
+      } = {
         creditPerUnit,
         rounding: row.rounding || 'ceil'
       };
-      // Only voice uses interval/min; chat, onboarding, audit do not
       if (row.featureCode === 'voice') {
-        if (row.intervalSeconds != null && Number.isFinite(Number(row.intervalSeconds)) && Number(row.intervalSeconds) > 0) {
+        if (
+          row.intervalSeconds != null &&
+          Number.isFinite(Number(row.intervalSeconds)) &&
+          Number(row.intervalSeconds) > 0
+        ) {
           rule.intervalSeconds = Number(row.intervalSeconds);
         }
-        if (row.minimumSeconds != null && Number.isFinite(Number(row.minimumSeconds)) && Number(row.minimumSeconds) >= 0) {
+        if (
+          row.minimumSeconds != null &&
+          Number.isFinite(Number(row.minimumSeconds)) &&
+          Number(row.minimumSeconds) >= 0
+        ) {
           rule.minimumSeconds = Number(row.minimumSeconds);
         }
       }
       customPricing[apiFeatureKey][row.unitType] = rule;
     }
-
-    this.isSavingPricing = true;
-    this.pricingErrorMessage = '';
-    this.pricingSuccessMessage = '';
-
-    const body = {
-      clientCode: this.clientCode,
+    return {
+      clientCode,
       tier: this.billingTier,
       allowNegativeBalance: this.allowNegativeBalance,
       customPricing,
@@ -958,19 +805,62 @@ export class ClientFormComponent implements OnInit {
         prompt_builder: this.baseCreditUsagePromptBuilder
       }
     };
+  }
+
+  private extractClientCodeFromCreateResponse(res: unknown): string | null {
+    const r = res as Record<string, unknown> | null;
+    if (!r || typeof r !== 'object') {
+      return null;
+    }
+    const client = r['client'] as Record<string, unknown> | undefined;
+    const fromNested =
+      client && typeof client === 'object'
+        ? (client['clientCode'] ?? client['cod'] ?? client['code'])
+        : undefined;
+    const direct = r['clientCode'] ?? r['cod'] ?? r['code'];
+    const raw = (fromNested ?? direct) as unknown;
+    const s = typeof raw === 'string' ? raw.trim() : String(raw ?? '').trim();
+    return s && s !== 'undefined' ? s : null;
+  }
+
+  private async putBillingBilling(
+    body: ReturnType<ClientFormComponent['buildBillingPutBody']>,
+    accessToken: string
+  ): Promise<{
+    message?: string;
+    billing?: Record<string, unknown>;
+  }> {
+    return this.api.putBillingBilling(body, accessToken);
+  }
+
+  async savePricing(): Promise<void> {
+    if (this.pageFieldsReadOnly) {
+      return;
+    }
+    const accessToken = localStorage.getItem('accessToken');
+    if (!accessToken) {
+      this.pricingErrorMessage = 'Session expired. Please log in again.';
+      return;
+    }
+    if (!this.clientCode?.trim()) {
+      this.pricingErrorMessage = 'Missing client code.';
+      return;
+    }
+
+    const pricingErr = this.validatePricingRulesForBilling();
+    if (pricingErr) {
+      this.pricingErrorMessage = pricingErr;
+      return;
+    }
+
+    this.isSavingPricing = true;
+    this.pricingErrorMessage = '';
+    this.pricingSuccessMessage = '';
+
+    const body = this.buildBillingPutBody(this.clientCode.trim());
 
     try {
-      const res = await firstValueFrom(
-        this.http.put<{
-          message?: string;
-          billing?: Record<string, unknown>;
-        }>(`${this.apiBase}/billing/billing`, body, {
-          headers: new HttpHeaders({
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          })
-        })
-      );
+      const res = await this.putBillingBilling(body, accessToken);
       this.pricingSuccessMessage =
         res?.message?.trim() || 'Billing updated successfully.';
       if (res?.billing && typeof res.billing === 'object') {
@@ -980,10 +870,168 @@ export class ClientFormComponent implements OnInit {
       }
     } catch (error) {
       console.error(error);
-      this.pricingErrorMessage = (error as any)?.error?.message ?? 'Unable to save pricing right now.';
+      this.pricingErrorMessage =
+        (error as any)?.error?.message ?? 'Unable to save pricing right now.';
     } finally {
       this.isSavingPricing = false;
     }
+  }
+
+  private captureEditPageSnapshot(): void {
+    const raw = this.clientForm.getRawValue();
+    this.editPageCancelSnapshot = {
+      clientName: String(raw.clientName ?? ''),
+      enabledAgents: [...((raw.enabledAgents as string[]) ?? [])],
+      dataResidency: String(raw.dataResidency ?? ''),
+      voiceConcurrency: Number(raw.voiceConcurrency),
+      billingTier: this.billingTier,
+      allowNegativeBalance: this.allowNegativeBalance,
+      baseCreditUsagePromptBuilder: this.baseCreditUsagePromptBuilder,
+      pricingRules: this.pricingRules.map((r) => ({ ...r }))
+    };
+  }
+
+  private restoreEditPageSnapshot(): void {
+    const s = this.editPageCancelSnapshot;
+    if (!s) {
+      return;
+    }
+    this.clientForm.patchValue({
+      clientName: s.clientName,
+      enabledAgents: s.enabledAgents,
+      dataResidency: s.dataResidency,
+      voiceConcurrency: s.voiceConcurrency
+    });
+    this.billingTier = s.billingTier;
+    this.allowNegativeBalance = s.allowNegativeBalance;
+    this.baseCreditUsagePromptBuilder = s.baseCreditUsagePromptBuilder;
+    this.pricingRules = s.pricingRules.map((r) => ({ ...r }));
+    this.editPageCancelSnapshot = null;
+  }
+
+  startPageEdit(): void {
+    if (!this.isEditMode || this.clientPageViewOnly) {
+      return;
+    }
+    this.captureEditPageSnapshot();
+    this.pageEditUnlocked = true;
+    this.errorMessage = '';
+    this.successMessage = '';
+    this.pricingErrorMessage = '';
+    this.pricingSuccessMessage = '';
+    this.dataResidencyMenuOpen = false;
+    this.billingTierMenuOpen = false;
+    this.pricingDd = null;
+  }
+
+  cancelPageEdit(): void {
+    if (!this.pageEditUnlocked || this.clientPageViewOnly || this.isSavingEntirePage) {
+      return;
+    }
+    this.restoreEditPageSnapshot();
+    this.pageEditUnlocked = false;
+    this.errorMessage = '';
+    this.successMessage = '';
+    this.pricingErrorMessage = '';
+    this.pricingSuccessMessage = '';
+    this.dataResidencyMenuOpen = false;
+    this.billingTierMenuOpen = false;
+    this.pricingDd = null;
+  }
+
+  async saveEntireEditPage(): Promise<void> {
+    if (!this.isEditMode || this.clientPageViewOnly || !this.pageEditUnlocked) {
+      return;
+    }
+    if (this.clientForm.invalid) {
+      this.clientForm.markAllAsTouched();
+      return;
+    }
+
+    const accessToken = localStorage.getItem('accessToken');
+    if (!accessToken) {
+      this.errorMessage = 'Session expired. Please log in again.';
+      return;
+    }
+
+    const formValue = this.clientForm.getRawValue();
+    if (!formValue.enabledAgents || formValue.enabledAgents.length === 0) {
+      this.errorMessage = 'Select at least one enabled agent before saving.';
+      return;
+    }
+
+    const voiceConcurrency = Number(formValue.voiceConcurrency);
+    if (
+      !Number.isFinite(voiceConcurrency) ||
+      !Number.isInteger(voiceConcurrency) ||
+      voiceConcurrency < 1
+    ) {
+      this.errorMessage = 'Voice concurrency must be a positive whole number.';
+      return;
+    }
+
+    const pricingErr = this.validatePricingRulesForBilling();
+    if (pricingErr) {
+      this.pricingErrorMessage = pricingErr;
+      return;
+    }
+
+    this.isSavingEntirePage = true;
+    this.errorMessage = '';
+    this.successMessage = '';
+    this.pricingErrorMessage = '';
+    this.pricingSuccessMessage = '';
+
+    try {
+      await this.api.updateClient(
+        this.clientCode,
+        {
+          clientName: formValue.clientName,
+          enabledAgents: formValue.enabledAgents,
+          dataResidency: formValue.dataResidency,
+          voiceConcurrency
+        },
+        accessToken
+      );
+
+      const billingRes = await this.putBillingBilling(
+        this.buildBillingPutBody(this.clientCode.trim()),
+        accessToken
+      );
+
+      if (billingRes?.billing && typeof billingRes.billing === 'object') {
+        this.applyBillingFromClient({
+          billing: billingRes.billing
+        } as unknown as ClientRow);
+      }
+
+      this.pageEditUnlocked = false;
+      this.editPageCancelSnapshot = null;
+      this.successMessage = 'Client and pricing saved successfully.';
+      const billingMsg = billingRes?.message?.trim();
+      if (billingMsg) {
+        this.pricingSuccessMessage = billingMsg;
+      }
+    } catch (error) {
+      console.error(error);
+      const msg =
+        error instanceof HttpErrorResponse
+          ? (typeof error.error?.message === 'string'
+              ? error.error.message
+              : error.statusText)
+          : 'Unable to save. Check your connection and try again.';
+      this.errorMessage = msg;
+    } finally {
+      this.isSavingEntirePage = false;
+    }
+  }
+
+  onClientFormSubmit(event: Event): void {
+    event.preventDefault();
+    if (this.clientPageViewOnly || this.isEditMode) {
+      return;
+    }
+    void this.onSubmit();
   }
 
   goBack(): void {

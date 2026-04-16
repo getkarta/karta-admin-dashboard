@@ -1,19 +1,8 @@
-import {
-  HttpClient,
-  HttpErrorResponse,
-  HttpHeaders,
-  HttpParams
-} from '@angular/common/http';
-import {
-  ChangeDetectorRef,
-  Component,
-  OnDestroy,
-  OnInit
-} from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
 
-import { environment } from '../../config/environment';
+import { ApiService } from '../services/api.service';
 
 export interface BillingInfo {
   tier?: string;
@@ -34,6 +23,8 @@ export interface ClientRow {
   /** Carried from API for PUT /clients/:code (e.g. unarchive). */
   dataResidency?: string;
   voiceConcurrency?: number;
+  /** Optional; from list API when provided. */
+  userCount?: number;
 }
 
 @Component({
@@ -42,11 +33,8 @@ export interface ClientRow {
   templateUrl: './clients.component.html',
   styleUrl: './clients.component.scss'
 })
-export class ClientsComponent implements OnInit, OnDestroy {
+export class ClientsComponent implements OnInit {
   clients: ClientRow[] = [];
-
-  /** `edit`: full directory controls; `view`: read-only list (no add, links, or row actions). */
-  directoryUiMode: 'view' | 'edit' = 'view';
 
   selectedTab: 'all' | 'active' | 'archived' = 'active';
   /** Filters the current tab’s rows by name, code, agents, status. */
@@ -57,32 +45,29 @@ export class ClientsComponent implements OnInit, OnDestroy {
   pageIndex = 0;
   pageSize = 10;
   readonly pageSizeOptions: number[] = [5, 10, 25, 50];
-  private readonly apiBase = environment.apiUrl.replace(/\/$/, '');
   /**
    * Client list: GET {apiBase}/clients?includeArchived=true
    * (see also GET …/clients and GET …/clients?archivedOnly=true).
    */
   private readonly locallyArchivedClients = new Map<string, ClientRow>();
   private static readonly ARCHIVED_STORAGE_KEY = 'kartaAdminArchivedClientRows';
-  /** Brief “Copied” hint next to the client code that was copied */
-  copiedClientCode: string | null = null;
-  private copyFeedbackClearId: ReturnType<typeof setTimeout> | null = null;
-
+  /** Shown in the action banner after redirect from create when client code is missing from POST response. */
+  private pendingListRouteFlash = '';
   constructor(
-    private http: HttpClient,
+    private api: ApiService,
     private router: Router,
     private cdr: ChangeDetectorRef
-  ) {}
+  ) {
+    const nav = this.router.getCurrentNavigation();
+    const flash = nav?.extras?.state?.['listFlashMessage'];
+    if (typeof flash === 'string' && flash.trim()) {
+      this.pendingListRouteFlash = flash.trim();
+    }
+  }
 
   ngOnInit(): void {
     this.hydrateLocallyArchivedFromStorage();
     void this.loadClients();
-  }
-
-  ngOnDestroy(): void {
-    if (this.copyFeedbackClearId != null) {
-      clearTimeout(this.copyFeedbackClearId);
-    }
   }
 
   get totalClients(): number {
@@ -117,17 +102,24 @@ export class ClientsComponent implements OnInit, OnDestroy {
     return byTab.filter((client) => this.clientMatchesSearch(client, q));
   }
 
-  setDirectoryUiMode(mode: 'view' | 'edit'): void {
-    this.directoryUiMode = mode;
-  }
-
-  toggleDirectoryUiMode(): void {
-    this.directoryUiMode = this.directoryUiMode === 'view' ? 'edit' : 'view';
-  }
-
-  /** Clickable client name only in edit mode for non-archived rows. */
+  /** Clickable client name for non-archived rows (opens Update Client). */
   showClientNameLink(client: ClientRow): boolean {
-    return this.directoryUiMode === 'edit' && client.status !== 'Archived';
+    return client.status !== 'Archived';
+  }
+
+  userCountFor(client: ClientRow): number {
+    const n = client.userCount;
+    if (typeof n === 'number' && Number.isFinite(n) && n >= 0) {
+      return Math.floor(n);
+    }
+    return 0;
+  }
+
+  /** Full-page User information (directory-style list + add user). */
+  goToClientUsers(client: ClientRow): void {
+    void this.router.navigate(['/clients', client.clientCode, 'users'], {
+      state: { clientName: client.clientName }
+    });
   }
 
   get emptyDirectoryHint(): string {
@@ -207,6 +199,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
     void this.router.navigate(['/clients/new']);
   }
 
+  /** Full Update Client page (same as row **View** and client name). */
   editClient(client: ClientRow): void {
     void this.router.navigate(
       ['/clients', client.clientCode, 'edit'],
@@ -220,29 +213,16 @@ export class ClientsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const done = (): void => {
-      this.copiedClientCode = text;
-      this.cdr.markForCheck();
-      if (this.copyFeedbackClearId != null) {
-        clearTimeout(this.copyFeedbackClearId);
-      }
-      this.copyFeedbackClearId = setTimeout(() => {
-        this.copiedClientCode = null;
-        this.copyFeedbackClearId = null;
-        this.cdr.markForCheck();
-      }, 2000);
-    };
-
     if (navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(text).then(done).catch(() => {
-        this.fallbackCopyTextToClipboard(text, done);
+      void navigator.clipboard.writeText(text).catch(() => {
+        this.fallbackCopyTextToClipboard(text);
       });
       return;
     }
-    this.fallbackCopyTextToClipboard(text, done);
+    this.fallbackCopyTextToClipboard(text);
   }
 
-  private fallbackCopyTextToClipboard(text: string, onDone: () => void): void {
+  private fallbackCopyTextToClipboard(text: string): void {
     const ta = document.createElement('textarea');
     ta.value = text;
     ta.setAttribute('readonly', '');
@@ -252,7 +232,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
     ta.select();
     try {
       document.execCommand('copy');
-      onDone();
     } catch {
       this.actionMessage = 'Could not copy client code.';
     }
@@ -274,14 +253,12 @@ export class ClientsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const headers = new HttpHeaders({
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
-    });
-    const url = `${this.apiBase}/clients/${encodeURIComponent(client.clientCode)}`;
-
     try {
-      const body = await this.unarchiveClientRequest(url, headers);
+      const body = await this.api.putClientArchiveState(
+        client.clientCode,
+        false,
+        accessToken
+      );
       this.loadError = '';
       this.actionMessage =
         body?.message?.trim() ||
@@ -294,21 +271,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
       this.loadError = '';
       this.actionMessage = this.describeUnarchiveError(error);
     }
-  }
-
-  /** PUT /admin/clients/:code — body `{ isArchived: false }` per API. */
-  private async unarchiveClientRequest(
-    url: string,
-    headers: HttpHeaders
-  ): Promise<{ message?: string; client?: unknown } | null> {
-    const res = await firstValueFrom(
-      this.http.put<{ message?: string; client?: unknown }>(
-        url,
-        { isArchived: false },
-        { headers, observe: 'response' }
-      )
-    );
-    return res.body;
   }
 
   private describeUnarchiveError(error: unknown): string {
@@ -343,14 +305,12 @@ export class ClientsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const headers = new HttpHeaders({
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
-    });
-    const url = `${this.apiBase}/clients/${encodeURIComponent(client.clientCode)}`;
-
     try {
-      const archiveBody = await this.archiveClientRequest(url, headers);
+      const archiveBody = await this.api.putClientArchiveState(
+        client.clientCode,
+        true,
+        accessToken
+      );
       this.loadError = '';
       this.actionMessage =
         archiveBody?.message?.trim() ||
@@ -366,21 +326,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
       this.loadError = '';
       this.actionMessage = this.describeArchiveError(error);
     }
-  }
-
-  /** PUT /admin/clients/:code — body `{ isArchived: true }` per API. */
-  private async archiveClientRequest(
-    url: string,
-    headers: HttpHeaders
-  ): Promise<{ message?: string; client?: unknown } | null> {
-    const res = await firstValueFrom(
-      this.http.put<{ message?: string; client?: unknown }>(
-        url,
-        { isArchived: true },
-        { headers, observe: 'response' }
-      )
-    );
-    return res.body;
   }
 
   private describeArchiveError(error: unknown): string {
@@ -412,22 +357,20 @@ export class ClientsComponent implements OnInit, OnDestroy {
     this.loadError = '';
 
     try {
-      const listParams = new HttpParams().set('includeArchived', 'true');
-      const response = await firstValueFrom(
-        this.http.get<any>(`${this.apiBase}/clients`, {
-          headers: new HttpHeaders({
-            Authorization: `Bearer ${accessToken}`
-          }),
-          params: listParams
-        })
-      );
+      const response = await this.api.getClientsList(accessToken);
 
       const rows = this.extractClientRows(response);
       this.clients = this.mergeApiRowsWithLocallyArchived(rows);
       this.clampPageIndex();
-      this.actionMessage = this.clients.length
-        ? 'Clients loaded successfully.'
-        : 'No clients found yet. Add Client flow will be the next page we create.';
+      await this.hydrateUserCountsFromApi();
+      if (this.pendingListRouteFlash) {
+        this.actionMessage = this.pendingListRouteFlash;
+        this.pendingListRouteFlash = '';
+      } else {
+        this.actionMessage = this.clients.length
+          ? 'Clients loaded successfully.'
+          : 'No clients found yet. Add Client flow will be the next page we create.';
+      }
     } catch (error) {
       console.error('Failed to load clients', error);
       this.clients = [];
@@ -550,13 +493,84 @@ export class ClientsComponent implements OnInit, OnDestroy {
       createdOn: this.formatDate(client?.createdAt || client?.updatedAt),
       billing: client?.billing ?? client?.bi,
       dataResidency: this.extractDataResidency(client),
-      voiceConcurrency: this.extractVoiceConcurrency(client)
+      voiceConcurrency: this.extractVoiceConcurrency(client),
+      userCount: this.extractUserCount(client)
     }));
   }
 
   private extractDataResidency(client: any): string | undefined {
     const dr = client?.dataResidency ?? client?.data_residency;
     return typeof dr === 'string' && dr.trim() ? dr.trim() : undefined;
+  }
+
+  private extractUserCount(client: any): number | undefined {
+    const direct =
+      client?.userCount ??
+      client?.usersCount ??
+      client?.user_count ??
+      client?.memberCount ??
+      client?.membersCount ??
+      client?.numUsers;
+    const n = typeof direct === 'number' ? direct : Number(direct);
+    if (Number.isFinite(n) && n >= 0) {
+      return Math.floor(n);
+    }
+    const users = client?.users;
+    if (Array.isArray(users)) {
+      return users.length;
+    }
+    return undefined;
+  }
+
+  /**
+   * List clients often omits user counts — fetch `GET …/clients/:code/users` per client
+   * (batched) so the Users column shows real totals.
+   */
+  private async hydrateUserCountsFromApi(): Promise<void> {
+    const token = localStorage.getItem('accessToken');
+    if (!token || !this.clients.length) {
+      return;
+    }
+
+    const codes = [
+      ...new Set(
+        this.clients
+          .map((c) => (c.clientCode || '').trim())
+          .filter((c) => c && c !== 'N/A')
+      )
+    ];
+    if (!codes.length) {
+      return;
+    }
+
+    const counts = new Map<string, number>();
+    const batchSize = 8;
+
+    for (let i = 0; i < codes.length; i += batchSize) {
+      const slice = codes.slice(i, i + batchSize);
+      await Promise.all(
+        slice.map(async (code) => {
+          try {
+            const res = await this.api.getClientUsers(code, token);
+            counts.set(code, Array.isArray(res.users) ? res.users.length : 0);
+          } catch {
+            // keep list-derived count if any; otherwise unchanged
+          }
+        })
+      );
+    }
+
+    if (!counts.size) {
+      return;
+    }
+
+    this.clients = this.clients.map((row) => {
+      const code = (row.clientCode || '').trim();
+      if (code && counts.has(code)) {
+        return { ...row, userCount: counts.get(code)! };
+      }
+      return row;
+    });
   }
 
   private extractVoiceConcurrency(client: any): number | undefined {
