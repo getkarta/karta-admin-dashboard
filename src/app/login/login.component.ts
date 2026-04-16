@@ -1,21 +1,7 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
-import { environment } from '../../config/environment';
 
-
-interface LoginResponse {
-  accessToken: string;
-  refreshToken: string;
-}
-
-interface CurrentUserResponse {
-  user: {
-    email: string;
-    role: string;
-  };
-}
+import { ApiService } from '../services/api.service';
 
 @Component({
   selector: 'app-login',
@@ -63,11 +49,9 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
   ];
   private rotationIntervalId: ReturnType<typeof setInterval> | null = null;
-  private readonly apiBase = environment.apiUrl.replace(/\/$/, '');
-
 
   constructor(
-    private http: HttpClient,
+    private api: ApiService,
     private router: Router
   ) {}
 
@@ -80,15 +64,9 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
 
     try {
-      const userResponse = await this.fetchCurrentUser(accessToken);
-
-      if (userResponse.user.role === 'admin') {
-        await this.router.navigate(['/clients']);
-      } else {
-        this.clearSession();
-        this.errorMessage = 'Access denied. Admin account required.';
-        await this.router.navigate(['/login']);
-      }
+      await this.fetchCurrentUser(accessToken);
+      await this.router.navigate(['/clients']);
+      
     } catch (error) {
       this.clearSession();
     }
@@ -108,11 +86,9 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.errorMessage = '';
 
     try {
-      const loginResponse = await firstValueFrom(
-        this.http.post<LoginResponse>(`${this.apiBase}/user/login`, {
-          email: this.email.trim(),
-          password: this.password
-        })
+      const loginResponse = await this.api.postLogin(
+        this.email.trim(),
+        this.password
       );
 
       if (!loginResponse?.accessToken || !loginResponse?.refreshToken) {
@@ -123,15 +99,10 @@ export class LoginComponent implements OnInit, OnDestroy {
       localStorage.setItem('accessToken', loginResponse.accessToken);
       localStorage.setItem('refreshToken', loginResponse.refreshToken);
 
-      const userResponse = await this.fetchCurrentUser(loginResponse.accessToken);
+      await this.fetchCurrentUser(loginResponse.accessToken);
 
-      if (userResponse.user.role === 'member') {
-        await this.router.navigate(['/clients']);
-      } else {
-        this.clearSession();
-        this.errorMessage = 'Access denied. Admin account required.';
-        await this.router.navigate(['/login']);
-      }
+      await this.router.navigate(['/clients']);
+      
     } catch (error) {
       console.error(error);
       this.errorMessage = 'Login failed. Please check your credentials and try again.';
@@ -142,14 +113,8 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
   }
 
-  private fetchCurrentUser(accessToken: string): Promise<CurrentUserResponse> {
-    return firstValueFrom(
-      this.http.get<CurrentUserResponse>(`${this.apiBase}/user`, {
-        headers: new HttpHeaders({
-          Authorization: `Bearer ${accessToken}`
-        })
-      })
-    );
+  private fetchCurrentUser(accessToken: string) {
+    return this.api.getAuthenticatedUser(accessToken);
   }
   private clearSession(): void {
     localStorage.removeItem('accessToken');

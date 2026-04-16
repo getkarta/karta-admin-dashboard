@@ -1,3 +1,689 @@
+@use '../../styles/variables' as *;
+
+// ----- Page level -----
+.page-content {
+  width: 100%;
+  max-width: 900px;
+}
+
+.page-header {
+  position: relative;
+  margin-bottom: 18px;
+  padding-bottom: 10px;
+}
+
+.basic-info-card-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+
+  &__edit {
+    flex-shrink: 0;
+  }
+}
+
+.pricing-form__page-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid $color-medium-gray;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  font-size: 14px;
+  color: $color-primary;
+  text-decoration: none;
+  margin-bottom: 12px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: color 0.15s ease;
+
+  &:hover {
+    color: $color-muted;
+    text-decoration: underline;
+  }
+}
+
+.page-title {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: $color-primary;
+  margin: 0 0 8px 0;
+}
+
+.page-description {
+  font-size: 15px;
+  line-height: 1.5;
+  color: $color-text-secondary;
+  margin: 0px;
+  max-width: 600px;
+}
+
+.client-badge {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: $color-primary;
+  background: $color-secondary-dark;
+  border: 1px solid $color-medium-gray;
+  border-radius: 8px;
+}
+
+// ----- Cards -----
+.card {
+  background: $color-white;
+  border: 1px solid $color-medium-gray;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  padding: 24px 28px;
+  margin-bottom: 24px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.card__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: $color-primary;
+  margin: 0 0 4px 0 !important;
+}
+
+.card__header {
+  margin-bottom: 20px;
+}
+
+.card__description {
+  font-size: 14px;
+  color: $color-text-secondary;
+  margin: 0;
+  line-height: 1.45;
+}
+
+.client-form-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin-bottom: 2px;
+
+  .card__title {
+    margin: 0;
+  }
+
+  .client-badge {
+    margin-top: 0;
+  }
+}
+
+// ----- Form -----
 .client-form {
-  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.client-form__hidden-submit {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.create-page-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Client name: 30% of form/card width on larger viewports */
+.form-group--client-name {
+  align-items: flex-start;
+  align-self: flex-start;
+  width: 100%;
+  max-width: 100%;
+
+  .form-input {
+    width: 30%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+@media (max-width: 600px) {
+  .form-group--client-name .form-input {
+    width: 100%;
+  }
+}
+
+/* Update client: Data residency & Voice stacked below Enabled Agents */
+.basic-info-post-agents {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+  width: 100%;
+
+  .form-group--data-residency {
+    align-self: flex-start;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .residency-dd {
+    width: 100%;
+    max-width: min(100%, 20rem);
+    min-width: 0;
+  }
+
+  .form-input--fit-label {
+    width: 100%;
+    max-width: min(100%, 20rem);
+  }
+}
+
+/* Enabled agents: multiple selection via black checkboxes */
+.form-group--enabled-agents {
+  align-items: flex-start;
+}
+
+.agent-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.agent-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: $color-primary;
+  user-select: none;
+
+  input[type='checkbox'] {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    cursor: pointer;
+    accent-color: $color-primary;
+    border-radius: 4px;
+  }
+
+  &:focus-within {
+    outline: none;
+  }
+
+  input[type='checkbox']:focus-visible {
+    outline: 2px solid $color-primary;
+    outline-offset: 2px;
+  }
+}
+
+.agent-checkbox-row__text {
+  line-height: 1.45;
+}
+
+/* Data residency & voice concurrency: compact width, label above control */
+.form-group--data-residency {
+  align-items: flex-start;
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.form-input--fit-label {
+  width: fit-content;
+  min-width: min(100%, 15ch);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Custom Data Residency dropdown (same width as trigger, aligned, rounded panel) */
+.residency-dd {
+  position: relative;
+  width: fit-content;
+  min-width: 10.5rem;
+  max-width: 100%;
+  z-index: 1;
+}
+
+.residency-dd--open {
+  z-index: 100;
+}
+
+.residency-dd__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px 8px 12px;
+  margin: 0;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+  color: $color-primary;
+  background: $color-white;
+  border: 1px solid $color-border;
+  border-radius: 8px;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover {
+    border-color: rgba($color-primary, 0.25);
+  }
+
+  &:focus {
+    outline: none;
+    border-color: $color-primary;
+    box-shadow: 0 0 0 3px rgba($color-primary, 0.12);
+  }
+
+  &:disabled {
+    opacity: 0.7;
+    cursor: wait;
+  }
+}
+
+.residency-dd--open .residency-dd__trigger {
+  border-color: $color-primary;
+  box-shadow: 0 0 0 3px rgba($color-primary, 0.1);
+}
+
+.residency-dd__value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.residency-dd__chevron {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: $color-primary;
+  margin-right: 4px;
+}
+
+.residency-dd__list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: $color-white;
+  border: 1px solid $color-border;
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
+}
+
+.residency-dd__option {
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 1.35;
+  color: $color-primary;
+  cursor: pointer;
+  transition: background 0.1s ease;
+
+  &:hover {
+    background: $color-secondary-dark;
+  }
+
+  &--selected {
+    background: $color-primary;
+    color: $color-white;
+    font-weight: 500;
+
+    &:hover {
+      background: #1a1a1a;
+    }
+  }
+}
+
+.form-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: $color-primary;
+}
+
+.form-input,
+select.form-input,
+.form-select-multi {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid $color-border;
+  border-radius: 8px;
+  font-size: 14px;
+  color: $color-primary;
+  background: $color-white;
+  transition: border-color 0.15s ease;
+
+  &::placeholder {
+    color: $color-muted;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: $color-primary;
+  }
+}
+
+.form-select-multi {
+  min-height: 120px;
+  padding: 8px;
+}
+
+.form-group--checkbox {
+  align-self: flex-start;
+  margin-top: 6px;
+}
+
+.field-error {
+  font-size: 13px;
+  color: $color-primary;
+}
+
+.field-help {
+  font-size: 13px;
+  color: $color-muted;
+  line-height: 1.4;
+}
+
+// ----- Messages -----
+.message {
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.message--error {
+  color: $color-primary;
+  background: $color-bg-light;
+  border: 1px solid $color-medium-gray;
+}
+
+.message--success {
+  color: $color-success;
+  background: rgba(0, 167, 111, 0.08);
+  border: 1px solid rgba(0, 167, 111, 0.2);
+}
+
+// ----- Form actions (uses global .button) -----
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+// ----- Sections (Pricing) -----
+.pricing-management {
+  margin-top: 0;
+}
+
+.pricing-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.billing-tier-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.form-group--billing-tier {
+  align-items: flex-start;
+  width: 100%;
+
+  .residency-dd {
+    width: 100%;
+    max-width: min(100%, 280px);
+  }
+}
+
+.pricing-allow-negative {
+  margin: 0;
+}
+
+.pricing-management {
+  .residency-dd__list--scrollable {
+    max-height: min(280px, 50vh);
+    overflow-y: auto;
+  }
+
+  .pricing-rule-row {
+    position: relative;
+    z-index: 1;
+
+    &:has(.residency-dd--open) {
+      z-index: 20;
+    }
+
+    .pricing-rule-dd.residency-dd {
+      width: 100%;
+      min-width: 0;
+    }
+  }
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  color: $color-primary;
+}
+
+.checkbox-input {
+  width: 18px;
+  height: 18px;
+  accent-color: $color-primary;
+}
+
+// ----- Custom pricing block -----
+.custom-pricing-block {
+  margin-top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.block-title {
+  margin: 0 !important;
+  padding: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: $color-primary;
+}
+
+.custom-pricing-block > .field-help {
+  margin: 0;
+}
+
+.pricing-rules-wrap {
+  margin: 0;
+  border: 1px solid $color-medium-gray;
+  border-radius: 8px;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* View-only: no Remove column — 6-column grid */
+.pricing-rules-wrap--view-only .pricing-rule-header,
+.pricing-rules-wrap--view-only .pricing-rule-row {
+  grid-template-columns: 1.1fr 1.1fr minmax(88px, 0.75fr) minmax(100px, 0.65fr) minmax(88px, 0.65fr) minmax(80px, 0.55fr);
+  min-width: 640px;
+}
+
+.pricing-rule-header,
+.pricing-rule-row {
+  min-width: 720px;
+}
+
+.pricing-rule-header {
+  display: grid;
+  grid-template-columns: 1.1fr 1.1fr minmax(88px, 0.75fr) minmax(100px, 0.65fr) minmax(88px, 0.65fr) minmax(80px, 0.55fr) 88px;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 14px;
+  background: $color-secondary-dark;
+  font-size: 11px;
+  font-weight: 700;
+  color: $color-text-secondary;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pricing-rule-row {
+  display: grid;
+  grid-template-columns: 1.1fr 1.1fr minmax(88px, 0.75fr) minmax(100px, 0.65fr) minmax(88px, 0.65fr) minmax(80px, 0.55fr) 88px;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  background: $color-white;
+  border-top: 1px solid $color-medium-gray;
+
+  .pricing-rule__control {
+    width: 100%;
+    min-width: 0;
+    min-height: 38px;
+    box-sizing: border-box;
+  }
+
+  .pricing-rule-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    color: $color-muted;
+    font-size: 14px;
+    user-select: none;
+  }
+
+  .button-small {
+    justify-self: end;
+    align-self: center;
+  }
+}
+
+.custom-pricing-block > .button-secondary {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.pricing-form > .message {
+  margin: 0;
+}
+
+.pricing-form > .form-actions {
+  margin-top: 4px;
+}
+
+// ----- Responsive -----
+@media (max-width: 900px) {
+  .page-content {
+    max-width: 100%;
+  }
+
+  .card {
+    padding: 20px 24px;
+  }
+}
+
+@media (max-width: 600px) {
+  .page-title {
+    font-size: 24px;
+  }
+
+  .residency-dd {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .form-actions {
+    flex-direction: column-reverse;
+
+    .button {
+      width: 100%;
+    }
+  }
+
+  .billing-tier-block {
+    align-items: stretch;
+
+    .form-group--billing-tier .residency-dd {
+      max-width: none;
+    }
+  }
+
+  .pricing-rule-header,
+  .pricing-rule-row {
+    min-width: 0;
+  }
+
+  .pricing-rule-header {
+    display: none;
+  }
+
+  .pricing-rule-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 14px 12px;
+
+    .pricing-rule__control,
+    .pricing-rule-placeholder {
+      width: 100%;
+    }
+
+    .button-small {
+      justify-self: stretch;
+      width: 100%;
+    }
+  }
 }
