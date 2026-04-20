@@ -23,6 +23,29 @@ export interface ClientUsersApiResponse {
   }>;
 }
 
+/** POST …/billing/credits */
+export interface PostBillingCreditsRequest {
+  clientCode: string;
+  amount: number;
+  sourceRef: string;
+  kind: string;
+  expiresAt: string;
+  featureCode: string;
+  isBackfill: boolean;
+  customTimestamp: string | null;
+}
+
+export interface PostBillingCreditsResponse {
+  ok: boolean;
+  remaining?: number;
+  bucketId?: string;
+  alreadyApplied?: boolean;
+  ledgerEntryId?: string | null;
+  expiresAt?: string | null;
+  sourceRef?: string;
+  idempotencyKey?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private readonly apiBase = environment.apiUrl.replace(/\/$/, '');
@@ -199,6 +222,20 @@ export class ApiService {
     return firstValueFrom(
       this.http.put<{ message?: string; billing?: Record<string, unknown> }>(
         `${this.apiBase}/billing/billing`,
+        body,
+        { headers: this.jsonAuthHeaders(accessToken) }
+      )
+    );
+  }
+
+  /** POST …/billing/credits — add credits to a client bucket */
+  postBillingCredits(
+    body: PostBillingCreditsRequest,
+    accessToken: string
+  ): Promise<PostBillingCreditsResponse> {
+    return firstValueFrom(
+      this.http.post<PostBillingCreditsResponse>(
+        `${this.apiBase}/billing/credits`,
         body,
         { headers: this.jsonAuthHeaders(accessToken) }
       )
