@@ -153,6 +153,15 @@ export class ClientFormComponent implements OnInit {
   /** From `navigate(..., { state: { flashPricingError } })` after create + billing PUT failure. */
   private pendingPricingRouteFlash = '';
 
+  /** Add credits popup (Update Client toolbar). */
+  addCreditsModalOpen = false;
+  addCreditsAmount = '';
+  addCreditsFeatureCode = 'chat';
+  addCreditsExpiry = '';
+  addCreditsFeatureMenuOpen = false;
+  addCreditsError = '';
+  addCreditsSubmitting = false;
+
   constructor(
     private fb: FormBuilder,
     private route: ActivatedRoute,
@@ -198,10 +207,25 @@ export class ClientFormComponent implements OnInit {
     if (this.pricingDd !== null && !el.closest('.pricing-rule-dd')) {
       this.pricingDd = null;
     }
+    if (
+      this.addCreditsModalOpen &&
+      this.addCreditsFeatureMenuOpen &&
+      !el.closest('.add-credits-feature-dd')
+    ) {
+      this.addCreditsFeatureMenuOpen = false;
+    }
   }
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
+    if (this.addCreditsFeatureMenuOpen) {
+      this.addCreditsFeatureMenuOpen = false;
+      return;
+    }
+    if (this.addCreditsModalOpen) {
+      this.closeAddCreditsModal();
+      return;
+    }
     this.dataResidencyMenuOpen = false;
     this.billingTierMenuOpen = false;
     this.pricingDd = null;
@@ -907,6 +931,159 @@ export class ClientFormComponent implements OnInit {
     this.baseCreditUsagePromptBuilder = s.baseCreditUsagePromptBuilder;
     this.pricingRules = s.pricingRules.map((r) => ({ ...r }));
     this.editPageCancelSnapshot = null;
+  }
+
+  get addCreditsFeatureDisplayLabel(): string {
+    return (
+      this.FEATURE_CODES.find((f) => f.value === this.addCreditsFeatureCode)
+        ?.label ?? this.addCreditsFeatureCode
+    );
+  }
+
+  openAddCreditsModal(): void {
+    if (!this.isEditMode || this.clientPageViewOnly) {
+      return;
+    }
+    this.resetAddCreditsModalFields();
+    this.addCreditsModalOpen = true;
+  }
+
+  closeAddCreditsModal(force = false): void {
+    if (!force && this.addCreditsSubmitting) {
+      return;
+    }
+    this.addCreditsModalOpen = false;
+    this.resetAddCreditsModalFields();
+  }
+
+  /** Clears add-credits form fields and dropdown state (safe to call when modal is closed). */
+  private resetAddCreditsModalFields(): void {
+    this.addCreditsAmount = '';
+    this.addCreditsFeatureCode = 'chat';
+    this.addCreditsExpiry = '';
+    this.addCreditsFeatureMenuOpen = false;
+    this.addCreditsError = '';
+    this.addCreditsSubmitting = false;
+  }
+
+  onAddCreditsBackdropClick(ev: MouseEvent): void {
+    if (this.addCreditsSubmitting) {
+      return;
+    }
+    if (ev.target === ev.currentTarget) {
+      this.closeAddCreditsModal();
+    }
+  }
+
+  toggleAddCreditsFeatureMenu(ev: MouseEvent): void {
+    ev.stopPropagation();
+    if (this.addCreditsSubmitting) {
+      return;
+    }
+    this.addCreditsFeatureMenuOpen = !this.addCreditsFeatureMenuOpen;
+  }
+
+  selectAddCreditsFeature(value: string): void {
+    if (this.addCreditsSubmitting) {
+      return;
+    }
+    this.addCreditsFeatureCode = value;
+    this.addCreditsFeatureMenuOpen = false;
+  }
+
+  async submitAddCredits(): Promise<void> {
+    this.addCreditsError = '';
+    const rawAmount = String(this.addCreditsAmount ?? '').trim();
+    const n = Number(rawAmount);
+    if (!Number.isFinite(n) || n <= 0) {
+      this.addCreditsError = 'Enter a positive credit amount.';
+      return;
+    }
+    if (!this.addCreditsExpiry?.trim()) {
+      this.addCreditsError = 'Select an expiry date.';
+      return;
+    }
+    const day = this.addCreditsExpiry.trim();
+    const d = new Date(`${day}T12:00:00`);
+    if (Number.isNaN(d.getTime())) {
+      this.addCreditsError = 'Invalid expiry date.';
+      return;
+    }
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    if (d < start) {
+      this.addCreditsError = 'Expiry date must be today or later.';
+      return;
+    }
+
+    const accessToken = localStorage.getItem('accessToken');
+    if (!accessToken) {
+      this.addCreditsError = 'Session expired. Please log in again.';
+      return;
+    }
+    const code = this.clientCode?.trim();
+    if (!code) {
+      this.addCreditsError = 'Missing client code.';
+      return;
+    }
+
+    const expiresAt = `${day}T23:59:59.000Z`;
+    const featureCode = this.pricingFeatureKeyForApi(this.addCreditsFeatureCode);
+    const sourceRef =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? `admin-dashboard-${crypto.randomUUID()}`
+        : `admin-dashboard-${Date.now()}`;
+
+    this.addCreditsSubmitting = true;
+    try {
+      const res = await this.api.postBillingCredits(
+        {
+          clientCode: code,
+          amount: n,
+          sourceRef,
+          kind: 'paid',
+          expiresAt,
+          featureCode,
+          isBackfill: false,
+          customTimestamp: null
+        },
+        accessToken
+      );
+
+      if (!res?.ok) {
+        this.addCreditsError = 'Credits request was not accepted.';
+        return;
+      }
+
+      const remaining = res.remaining;
+      if (res.alreadyApplied) {
+        this.successMessage =
+          typeof remaining === 'number'
+            ? `Credits were already applied. Remaining: ${remaining}.`
+            : 'Credits were already applied.';
+      } else {
+        this.successMessage =
+          typeof remaining === 'number'
+            ? `Credits added. Remaining: ${remaining}.`
+            : 'Credits added successfully.';
+      }
+      this.errorMessage = '';
+      this.closeAddCreditsModal(true);
+    } catch (error) {
+      const msg =
+        error instanceof HttpErrorResponse
+          ? typeof error.error === 'string' && error.error.trim()
+            ? error.error.trim()
+            : error.error &&
+                typeof error.error === 'object' &&
+                typeof (error.error as { message?: string }).message === 'string'
+              ? String((error.error as { message: string }).message)
+              : error.statusText || 'Request failed.'
+          : 'Unable to add credits. Try again.';
+      this.addCreditsError = msg;
+    } finally {
+      this.addCreditsSubmitting = false;
+    }
   }
 
   startPageEdit(): void {
