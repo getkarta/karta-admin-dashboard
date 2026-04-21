@@ -185,6 +185,7 @@ export class ApiService {
       clientName: string;
       dataResidency: string;
       voiceConcurrency: number;
+      enabledAgents: string[];
     },
     accessToken: string
   ): Promise<unknown> {
