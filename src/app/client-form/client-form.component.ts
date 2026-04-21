@@ -76,8 +76,8 @@ export class ClientFormComponent implements OnInit {
   pricingErrorMessage = '';
   pricingSuccessMessage = '';
   isSavingPricing = false;
-  billingTier = 'basic';
-  allowNegativeBalance = false;
+  billingTier = 'enterprise';
+  allowNegativeBalance = true;
   /** Maps to `baseCreditUsage.prompt_builder` on the billing API */
   baseCreditUsagePromptBuilder = false;
   billingTierMenuOpen = false;
@@ -181,7 +181,7 @@ export class ClientFormComponent implements OnInit {
         Validators.required,
         Validators.min(1)
       ]),
-      enabledAgents: this.fb.nonNullable.control<string[]>([])
+      enabledAgents: this.fb.nonNullable.control<string[]>(['chat'])
     });
   }
 
@@ -427,6 +427,11 @@ export class ClientFormComponent implements OnInit {
     return this.clientPageViewOnly || (this.isEditMode && !this.pageEditUnlocked);
   }
 
+  /** Create Client requires at least one custom pricing row. */
+  get isCreateClientBlockedByPricing(): boolean {
+    return !this.isEditMode && !this.clientPageViewOnly && this.pricingRules.length === 0;
+  }
+
   get clientFormPageDescription(): string {
     if (this.clientPageViewOnly) {
       return 'Read-only: review basic information and pricing below. Nothing on this page can be changed. Add or manage users from the Clients directory (user count).';
@@ -436,7 +441,7 @@ export class ClientFormComponent implements OnInit {
         ? 'You are editing this client. Use Save under Pricing & Billing to apply client details and pricing together, or Cancel to discard changes.'
         : 'Review client details and pricing. Click Edit above Basic information to make changes, then use Save and Cancel under Pricing & Billing to apply or discard edits together.';
     }
-    return 'Create a new client record. Configure optional pricing below; it is saved when you create the client. Agents can be enabled after the client is created.';
+    return 'Create a new client record. Add at least one custom pricing rule under Pricing & Billing (required); billing is saved when you create the client.';
   }
 
   private pickResidencyAndVoiceFromUnknown(
@@ -586,7 +591,8 @@ export class ClientFormComponent implements OnInit {
   private applyBillingFromClient(client: ClientRow): void {
     const billing = (client as any)?.billing ?? (client as any)?.bi;
     if (!billing) {
-      this.allowNegativeBalance = false;
+      this.billingTier = 'enterprise';
+      this.allowNegativeBalance = true;
       this.pricingRules = [];
       return;
     }
@@ -650,6 +656,19 @@ export class ClientFormComponent implements OnInit {
       return;
     }
 
+    if (!formValue.enabledAgents || formValue.enabledAgents.length === 0) {
+      this.errorMessage = 'Select at least one enabled agent before creating.';
+      this.isSubmitting = false;
+      return;
+    }
+
+    if (this.pricingRules.length === 0) {
+      this.errorMessage =
+        'Add at least one custom pricing rule under Pricing & Billing before creating the client.';
+      this.isSubmitting = false;
+      return;
+    }
+
     try {
       const pricingErr = this.validatePricingRulesForBilling();
       if (pricingErr) {
@@ -661,7 +680,8 @@ export class ClientFormComponent implements OnInit {
         {
           clientName: formValue.clientName,
           dataResidency: formValue.dataResidency,
-          voiceConcurrency
+          voiceConcurrency,
+          enabledAgents: formValue.enabledAgents
         },
         accessToken
       );
@@ -697,7 +717,7 @@ export class ClientFormComponent implements OnInit {
               client: {
                 clientName: formValue.clientName,
                 clientCode: newCode,
-                enabledAgents: [],
+                enabledAgents: formValue.enabledAgents ?? [],
                 status: 'Active',
                 owner: '',
                 createdOn: ''

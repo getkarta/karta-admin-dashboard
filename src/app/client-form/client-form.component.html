@@ -100,11 +100,7 @@
           </small>
         </label>
 
-        <ng-container *ngIf="!isEditMode">
-          <ng-container *ngTemplateOutlet="residencyAndVoiceFields"></ng-container>
-        </ng-container>
-
-        <div class="form-group form-group--enabled-agents" *ngIf="isEditMode">
+        <div class="form-group form-group--enabled-agents" *ngIf="isEditMode || !clientPageViewOnly">
           <span class="form-label" id="enabled-agents-label">Enabled Agents</span>
           <div
             class="agent-checkboxes"
@@ -121,6 +117,10 @@
           </div>
         </div>
 
+        <ng-container *ngIf="!isEditMode && !clientPageViewOnly">
+          <ng-container *ngTemplateOutlet="residencyAndVoiceFields"></ng-container>
+        </ng-container>
+
         <div class="basic-info-post-agents" *ngIf="isEditMode">
           <ng-container *ngTemplateOutlet="residencyAndVoiceFields"></ng-container>
         </div>
@@ -135,7 +135,7 @@
           class="client-form__hidden-submit"
           tabindex="-1"
           aria-hidden="true"
-          [disabled]="isSubmitting">
+          [disabled]="isSubmitting || isCreateClientBlockedByPricing">
           Create
         </button>
       </form>
@@ -220,7 +220,11 @@
 
           <div class="custom-pricing-block">
             <h3 class="block-title">Custom pricing (credits per unit)</h3>
-            <p class="field-help" *ngIf="!pageFieldsReadOnly && !clientPageViewOnly">
+            <p class="field-help" *ngIf="!pageFieldsReadOnly && !clientPageViewOnly && !isEditMode">
+              Add at least one rule for feature + unit type. Custom pricing is required before you can create the
+              client.
+            </p>
+            <p class="field-help" *ngIf="!pageFieldsReadOnly && !clientPageViewOnly && isEditMode">
               Add rules for feature + unit type. These are sent as custom pricing on the billing API (no rows means an
               empty map).
             </p>
@@ -424,7 +428,11 @@
 
   <div class="create-page-footer-actions" *ngIf="!isEditMode && !clientPageViewOnly">
     <button type="button" class="button button-transparent" (click)="goBack()">Cancel</button>
-    <button type="button" class="button" [disabled]="isSubmitting" (click)="onSubmit()">
+    <button
+      type="button"
+      class="button"
+      [disabled]="isSubmitting || isCreateClientBlockedByPricing"
+      (click)="onSubmit()">
       {{ isSubmitting ? 'Creating...' : 'Create Client' }}
     </button>
   </div>
