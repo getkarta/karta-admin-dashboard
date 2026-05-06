@@ -8,6 +8,7 @@
   import { LoginComponent } from './login/login.component';
   import { ClientsComponent } from './clients/clients.component';
   import { ClientFormComponent } from './client-form/client-form.component';
+  import { ClientUsersComponent } from './client-users/client-users.component';
   import { LayoutComponent } from './layout/layout.component';
   import { AuthInterceptor } from './interceptors/auth.interceptor';
 
@@ -18,6 +19,7 @@
       LayoutComponent,
       ClientsComponent,
       ClientFormComponent,
+      ClientUsersComponent,
     ],
     imports: [
       BrowserModule,

@@ -1,1 +1,4 @@
 node_modules/
+
+# Angular CLI / esbuild local cache (do not commit)
+.angular/

@@ -1,25 +1,98 @@
 <div class="page-content">
   <header class="page-header">
     <a class="back-link" (click)="goBack()" tabindex="0" (keydown.enter)="goBack()">← Clients</a>
-    <h1 class="page-title">{{ isEditMode ? 'Update Client' : 'Create Client' }}</h1>
+    <h1 class="page-title">{{ clientFormPageTitle }}</h1>
     <p class="page-description">
-      {{ isEditMode
-        ? 'Update the client name and choose which agents remain enabled.'
-        : 'Create a new client record. Agents can be configured after the client is created.' }}
+      {{ clientFormPageDescription }}
     </p>
-    <span class="client-badge" *ngIf="isEditMode && clientCode">{{ clientCode }}</span>
   </header>
 
+  <div
+    class="client-form-card-toolbar"
+    *ngIf="isEditMode && !clientPageViewOnly && !pageEditUnlocked">
+    <button type="button" class="button" (click)="startPageEdit()">Edit</button>
+    <button type="button" class="button" (click)="openAddCreditsModal()">Add credits</button>
+  </div>
+
   <section class="card client-form-card">
-      <h2 class="card__title">Basic information</h2>
-      <form [formGroup]="clientForm" (ngSubmit)="onSubmit()" class="client-form">
-        <label class="form-group">
+      <div class="client-form-card__header">
+        <h2 class="card__title">Basic information</h2>
+        <span class="client-badge" *ngIf="isEditMode && clientCode">{{ clientCode }}</span>
+      </div>
+      <form [formGroup]="clientForm" (ngSubmit)="onClientFormSubmit($event)" class="client-form">
+        <ng-template #residencyAndVoiceFields>
+          <div class="form-group form-group--data-residency">
+            <span class="form-label" id="data-residency-label">Data Residency</span>
+            <input type="hidden" formControlName="dataResidency" />
+            <div
+              class="residency-dd"
+              [class.residency-dd--open]="dataResidencyMenuOpen"
+              #residencyDropdownRoot>
+              <button
+                type="button"
+                class="residency-dd__trigger"
+                id="data-residency-trigger"
+                (click)="toggleDataResidencyMenu($event)"
+                [disabled]="pageFieldsReadOnly || isLoadingDataResidencyOptions"
+                [attr.aria-expanded]="dataResidencyMenuOpen"
+                aria-haspopup="listbox"
+                aria-controls="data-residency-listbox"
+                aria-labelledby="data-residency-label">
+                <span class="residency-dd__value">{{ dataResidencyDisplayLabel }}</span>
+                <span class="residency-dd__chevron" aria-hidden="true">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </span>
+              </button>
+              <ul
+                *ngIf="dataResidencyMenuOpen"
+                class="residency-dd__list"
+                id="data-residency-listbox"
+                role="listbox"
+                aria-labelledby="data-residency-label">
+                <li
+                  *ngFor="let opt of dataResidencyOptions"
+                  class="residency-dd__option"
+                  [class.residency-dd__option--selected]="isDataResidencySelected(opt.value)"
+                  role="option"
+                  [attr.aria-selected]="isDataResidencySelected(opt.value)"
+                  (click)="selectDataResidency(opt.value)">
+                  {{ opt.label }}
+                </li>
+              </ul>
+            </div>
+            <small class="field-help" *ngIf="isLoadingDataResidencyOptions">
+              Loading regions…
+            </small>
+          </div>
+
+          <label class="form-group form-group--data-residency">
+            <span class="form-label">Voice concurrency</span>
+            <input
+              type="number"
+              formControlName="voiceConcurrency"
+              class="form-input form-input--fit-label"
+              min="1"
+              step="1"
+              inputmode="numeric"
+              list="voice-concurrency-presets"
+              placeholder="e.g. 5"
+              [disabled]="pageFieldsReadOnly" />
+            <datalist id="voice-concurrency-presets">
+              <option *ngFor="let n of voiceConcurrencyOptions" [attr.value]="n"></option>
+            </datalist>
+          </label>
+        </ng-template>
+
+        <label class="form-group form-group--client-name">
           <span class="form-label">Client Name</span>
           <input
             type="text"
             formControlName="clientName"
             placeholder="Enter client name"
-            class="form-input" />
+            class="form-input"
+            [disabled]="pageFieldsReadOnly" />
           <small
             class="field-error"
             *ngIf="clientForm.controls['clientName'].touched && clientForm.controls['clientName'].invalid">
@@ -27,126 +100,144 @@
           </small>
         </label>
 
-        <label class="form-group" *ngIf="isEditMode">
-          <span class="form-label">Enabled Agents</span>
-          <select formControlName="enabledAgents" multiple class="form-select-multi">
-            <option *ngFor="let agent of availableAgents" [value]="agent.value">
-              {{ agent.label }}
-            </option>
-          </select>
-          <small class="field-help">
-            If no agents are enabled, the client behaves like a draft setup.
-          </small>
-        </label>
+        <div class="form-group form-group--enabled-agents" *ngIf="isEditMode || !clientPageViewOnly">
+          <span class="form-label" id="enabled-agents-label">Enabled Agents</span>
+          <div
+            class="agent-checkboxes"
+            role="group"
+            aria-labelledby="enabled-agents-label">
+            <label *ngFor="let agent of availableAgents" class="agent-checkbox-row">
+              <input
+                type="checkbox"
+                [checked]="isAgentEnabled(agent.value)"
+                [disabled]="pageFieldsReadOnly"
+                (change)="toggleEnabledAgent(agent.value, $event)" />
+              <span class="agent-checkbox-row__text">{{ agent.label }}</span>
+            </label>
+          </div>
+        </div>
+
+        <ng-container *ngIf="!isEditMode && !clientPageViewOnly">
+          <ng-container *ngTemplateOutlet="residencyAndVoiceFields"></ng-container>
+        </ng-container>
+
+        <div class="basic-info-post-agents" *ngIf="isEditMode">
+          <ng-container *ngTemplateOutlet="residencyAndVoiceFields"></ng-container>
+        </div>
 
         <div class="message message--error" *ngIf="errorMessage">{{ errorMessage }}</div>
         <div class="message message--success" *ngIf="successMessage">{{ successMessage }}</div>
 
-        <div class="form-actions">
-          <button type="button" class="button button-transparent" (click)="goBack()">Cancel</button>
-          <button type="submit" class="button" [disabled]="isSubmitting">
-            {{ isSubmitting
-              ? (isEditMode ? 'Updating...' : 'Creating...')
-              : (isEditMode ? 'Update Client' : 'Create Client') }}
-          </button>
-        </div>
+        <!-- Keeps Enter in basic fields submitting the form; primary actions are below Pricing & Billing. -->
+        <button
+          *ngIf="!isEditMode && !clientPageViewOnly"
+          type="submit"
+          class="client-form__hidden-submit"
+          tabindex="-1"
+          aria-hidden="true"
+          [disabled]="isSubmitting || isCreateClientBlockedByPricing">
+          Create
+        </button>
       </form>
   </section>
 
-  <section class="card user-management" *ngIf="isEditMode">
-        <div class="users-section-header">
-          <div class="card__header">
-            <h2 class="card__title">Users</h2>
-            <p class="card__description">Members under this client.</p>
-          </div>
-          <button type="button" class="button" (click)="openAddUserModal()">Add User</button>
-        </div>
-        <div class="users-list-wrap" *ngIf="clientUsers.length > 0 || isLoadingUsers">
-          <p *ngIf="isLoadingUsers">Loading users...</p>
-          <table class="users-table" *ngIf="!isLoadingUsers && clientUsers.length > 0">
-            <thead>
-              <tr>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Added</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let u of clientUsers">
-                <td>{{ u.email }}</td>
-                <td>{{ u.role }}</td>
-                <td>{{ u.createdAt | date:'short' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-  </section>
-
-  <!-- Add User modal -->
-  <div class="modal-overlay" *ngIf="showAddUserModal" (click)="closeAddUserModal()">
-    <div class="modal-box" (click)="$event.stopPropagation()">
-      <div class="modal-header">
-        <h3 class="modal-title">Add User</h3>
-        <button type="button" class="modal-close" aria-label="Close" (click)="closeAddUserModal()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <label class="form-group">
-          <span class="form-label">User Email</span>
-          <input
-            type="email"
-            [(ngModel)]="newUserEmail"
-            [ngModelOptions]="{ standalone: true }"
-            placeholder="Enter user email"
-            class="form-input" />
-        </label>
-        <label class="form-group">
-          <span class="form-label">Password</span>
-          <input
-            type="password"
-            [(ngModel)]="newUserPassword"
-            [ngModelOptions]="{ standalone: true }"
-            placeholder="Enter password"
-            class="form-input" />
-          <small class="field-help">Password must be at least 6 characters long.</small>
-        </label>
-        <div class="message message--error" *ngIf="userErrorMessage">{{ userErrorMessage }}</div>
-        <div class="message message--success" *ngIf="userSuccessMessage">{{ userSuccessMessage }}</div>
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="button button-transparent" (click)="closeAddUserModal()">Cancel</button>
-        <button type="button" class="button" [disabled]="isAddingUser" (click)="addUser()">
-          {{ isAddingUser ? 'Adding...' : 'Add User' }}
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <section class="card pricing-management" *ngIf="isEditMode">
+  <section class="card pricing-management" *ngIf="isEditMode || !clientPageViewOnly">
         <div class="card__header">
           <h2 class="card__title">Pricing & Billing</h2>
-          <p class="card__description">Set billing tier and custom credit-per-unit pricing for this client.</p>
+          <p class="card__description" *ngIf="clientPageViewOnly">
+            Billing tier and custom pricing for this client (read-only). Data is loaded from the server when you open
+            View.
+          </p>
+          <p class="card__description" *ngIf="isEditMode && !clientPageViewOnly">
+            Set billing tier and custom credit-per-unit pricing for this client.
+          </p>
+          <p class="card__description" *ngIf="!isEditMode">
+            Set billing tier and custom pricing for this client. It is saved with the same billing API when you click
+            Create Client.
+          </p>
         </div>
 
         <div class="pricing-form">
-          <div class="billing-tier-row">
-            <label class="form-group">
-              <span class="form-label">Billing tier</span>
-              <select [(ngModel)]="billingTier" [ngModelOptions]="{ standalone: true }" class="form-input">
-                <option *ngFor="let t of BILLING_TIERS" [value]="t.value">{{ t.label }}</option>
-              </select>
-            </label>
-            <div class="form-group form-group--checkbox">
+          <div class="billing-tier-block">
+            <div class="form-group form-group--billing-tier">
+              <span class="form-label" id="billing-tier-label">Billing tier</span>
+              <div
+                class="residency-dd billing-tier-dd"
+                [class.residency-dd--open]="billingTierMenuOpen">
+                <button
+                  type="button"
+                  class="residency-dd__trigger"
+                  id="billing-tier-trigger"
+                  (click)="toggleBillingTierMenu($event)"
+                  [disabled]="pageFieldsReadOnly"
+                  [attr.aria-expanded]="billingTierMenuOpen"
+                  aria-haspopup="listbox"
+                  aria-controls="billing-tier-listbox"
+                  aria-labelledby="billing-tier-label">
+                  <span class="residency-dd__value">{{ billingTierDisplayLabel }}</span>
+                  <span class="residency-dd__chevron" aria-hidden="true">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </span>
+                </button>
+                <ul
+                  *ngIf="billingTierMenuOpen"
+                  class="residency-dd__list"
+                  id="billing-tier-listbox"
+                  role="listbox"
+                  aria-labelledby="billing-tier-label">
+                  <li
+                    *ngFor="let t of BILLING_TIERS"
+                    class="residency-dd__option"
+                    [class.residency-dd__option--selected]="billingTier === t.value"
+                    role="option"
+                    [attr.aria-selected]="billingTier === t.value"
+                    (click)="selectBillingTier(t.value)">
+                    {{ t.label }}
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div class="form-group form-group--checkbox pricing-allow-negative">
               <label class="checkbox-label">
-                <input type="checkbox" [(ngModel)]="allowNegativeBalance" [ngModelOptions]="{ standalone: true }" class="checkbox-input" />
+                <input type="checkbox" [(ngModel)]="allowNegativeBalance" [ngModelOptions]="{ standalone: true }" class="checkbox-input" [disabled]="pageFieldsReadOnly" />
                 <span>Allow negative balance</span>
+              </label>
+            </div>
+            <div class="form-group form-group--checkbox pricing-base-credit-prompt-builder">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  [(ngModel)]="baseCreditUsagePromptBuilder"
+                  [ngModelOptions]="{ standalone: true }"
+                  class="checkbox-input"
+                  [disabled]="pageFieldsReadOnly" />
+                <span>Prompt builder base credit usage</span>
               </label>
             </div>
           </div>
 
           <div class="custom-pricing-block">
             <h3 class="block-title">Custom pricing (credits per unit)</h3>
-            <p class="field-help">Add rules for feature + unit type. Empty list keeps existing custom pricing unchanged when saving.</p>
-            <div class="pricing-rules-wrap">
+            <p class="field-help" *ngIf="!pageFieldsReadOnly && !clientPageViewOnly && !isEditMode">
+              Add at least one rule for feature + unit type. Custom pricing is required before you can create the
+              client.
+            </p>
+            <p class="field-help" *ngIf="!pageFieldsReadOnly && !clientPageViewOnly && isEditMode">
+              Add rules for feature + unit type. These are sent as custom pricing on the billing API (no rows means an
+              empty map).
+            </p>
+            <p class="field-help" *ngIf="isEditMode && pageFieldsReadOnly && !clientPageViewOnly">
+              Billing is read-only until you click Edit. After editing, use Save below this table to update the client
+              and billing together.
+            </p>
+            <p class="field-help" *ngIf="clientPageViewOnly">
+              Rules stored in custom pricing for this client. Empty means no custom rules are configured.
+            </p>
+            <div
+              class="pricing-rules-wrap"
+              [class.pricing-rules-wrap--view-only]="pageFieldsReadOnly">
               <div class="pricing-rule-header">
                 <span>Feature</span>
                 <span>Unit type</span>
@@ -154,59 +245,305 @@
                 <span>Rounding</span>
                 <span>Interval (s)</span>
                 <span>Min (s)</span>
-                <span></span>
+                <span *ngIf="!pageFieldsReadOnly" class="pricing-rule-header__actions"></span>
               </div>
               <div class="pricing-rule-row" *ngFor="let rule of pricingRules; let i = index">
-                <select [(ngModel)]="rule.featureCode" [ngModelOptions]="{ standalone: true }">
-                  <option *ngFor="let f of FEATURE_CODES" [value]="f.value">{{ f.label }}</option>
-                </select>
-                <select [(ngModel)]="rule.unitType" [ngModelOptions]="{ standalone: true }">
-                  <option *ngFor="let u of UNIT_TYPES" [value]="u.value">{{ u.label }}</option>
-                </select>
+                <div
+                  class="residency-dd pricing-rule-dd"
+                  [class.residency-dd--open]="isPricingDdOpen(i, 'feature')">
+                  <button
+                    type="button"
+                    class="residency-dd__trigger"
+                    (click)="togglePricingDd($event, i, 'feature')"
+                    [disabled]="pageFieldsReadOnly"
+                    [attr.aria-expanded]="isPricingDdOpen(i, 'feature')"
+                    aria-haspopup="listbox"
+                    [attr.aria-controls]="'pricing-feature-' + i"
+                    [attr.aria-label]="'Feature: ' + pricingRuleFieldLabelForRule(rule, 'feature')">
+                    <span class="residency-dd__value">{{ pricingRuleFieldLabelForRule(rule, 'feature') }}</span>
+                    <span class="residency-dd__chevron" aria-hidden="true">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </span>
+                  </button>
+                  <ul
+                    *ngIf="isPricingDdOpen(i, 'feature')"
+                    class="residency-dd__list"
+                    [id]="'pricing-feature-' + i"
+                    role="listbox"
+                    aria-label="Feature">
+                    <li
+                      *ngFor="let f of FEATURE_CODES"
+                      class="residency-dd__option"
+                      [class.residency-dd__option--selected]="rule.featureCode === f.value"
+                      role="option"
+                      [attr.aria-selected]="rule.featureCode === f.value"
+                      (click)="selectPricingRuleDropdown(i, 'feature', f.value)">
+                      {{ f.label }}
+                    </li>
+                  </ul>
+                </div>
+                <div
+                  class="residency-dd pricing-rule-dd"
+                  [class.residency-dd--open]="isPricingDdOpen(i, 'unit')">
+                  <button
+                    type="button"
+                    class="residency-dd__trigger"
+                    (click)="togglePricingDd($event, i, 'unit')"
+                    [disabled]="pageFieldsReadOnly"
+                    [attr.aria-expanded]="isPricingDdOpen(i, 'unit')"
+                    aria-haspopup="listbox"
+                    [attr.aria-controls]="'pricing-unit-' + i"
+                    [attr.aria-label]="'Unit type: ' + pricingRuleFieldLabelForRule(rule, 'unit')">
+                    <span class="residency-dd__value">{{ pricingRuleFieldLabelForRule(rule, 'unit') }}</span>
+                    <span class="residency-dd__chevron" aria-hidden="true">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </span>
+                  </button>
+                  <ul
+                    *ngIf="isPricingDdOpen(i, 'unit')"
+                    class="residency-dd__list residency-dd__list--scrollable"
+                    [id]="'pricing-unit-' + i"
+                    role="listbox"
+                    aria-label="Unit type">
+                    <li
+                      *ngFor="let u of UNIT_TYPES"
+                      class="residency-dd__option"
+                      [class.residency-dd__option--selected]="rule.unitType === u.value"
+                      role="option"
+                      [attr.aria-selected]="rule.unitType === u.value"
+                      (click)="selectPricingRuleDropdown(i, 'unit', u.value)">
+                      {{ u.label }}
+                    </li>
+                  </ul>
+                </div>
                 <input
                   type="number"
                   [(ngModel)]="rule.creditPerUnit"
                   [ngModelOptions]="{ standalone: true }"
+                  class="form-input pricing-rule__control"
                   placeholder="Credits"
                   min="0.01"
-                  step="0.01">
-                <select [(ngModel)]="rule.rounding" [ngModelOptions]="{ standalone: true }">
-                  <option *ngFor="let r of ROUNDING_TYPES" [value]="r.value">{{ r.label }}</option>
-                </select>
+                  step="0.01"
+                  [disabled]="pageFieldsReadOnly">
+                <div
+                  class="residency-dd pricing-rule-dd"
+                  [class.residency-dd--open]="isPricingDdOpen(i, 'rounding')">
+                  <button
+                    type="button"
+                    class="residency-dd__trigger"
+                    (click)="togglePricingDd($event, i, 'rounding')"
+                    [disabled]="pageFieldsReadOnly"
+                    [attr.aria-expanded]="isPricingDdOpen(i, 'rounding')"
+                    aria-haspopup="listbox"
+                    [attr.aria-controls]="'pricing-rounding-' + i"
+                    [attr.aria-label]="'Rounding: ' + pricingRuleFieldLabelForRule(rule, 'rounding')">
+                    <span class="residency-dd__value">{{ pricingRuleFieldLabelForRule(rule, 'rounding') }}</span>
+                    <span class="residency-dd__chevron" aria-hidden="true">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </span>
+                  </button>
+                  <ul
+                    *ngIf="isPricingDdOpen(i, 'rounding')"
+                    class="residency-dd__list"
+                    [id]="'pricing-rounding-' + i"
+                    role="listbox"
+                    aria-label="Rounding">
+                    <li
+                      *ngFor="let r of ROUNDING_TYPES"
+                      class="residency-dd__option"
+                      [class.residency-dd__option--selected]="rule.rounding === r.value"
+                      role="option"
+                      [attr.aria-selected]="rule.rounding === r.value"
+                      (click)="selectPricingRuleDropdown(i, 'rounding', r.value)">
+                      {{ r.label }}
+                    </li>
+                  </ul>
+                </div>
                 <ng-container *ngIf="rule.featureCode === 'voice'; else noIntervalMin">
                   <input
                     type="number"
                     [(ngModel)]="rule.intervalSeconds"
                     [ngModelOptions]="{ standalone: true }"
+                    class="form-input pricing-rule__control"
                     placeholder="Interval (s)"
                     min="1"
-                    title="Optional: billing interval for seconds-based units">
+                    title="Optional: billing interval for seconds-based units"
+                    [disabled]="pageFieldsReadOnly">
                   <input
                     type="number"
                     [(ngModel)]="rule.minimumSeconds"
                     [ngModelOptions]="{ standalone: true }"
+                    class="form-input pricing-rule__control"
                     placeholder="Min (s)"
                     min="0"
-                    title="Optional: minimum duration for seconds-based units">
+                    title="Optional: minimum duration for seconds-based units"
+                    [disabled]="pageFieldsReadOnly">
                 </ng-container>
                 <ng-template #noIntervalMin>
                   <span class="pricing-rule-placeholder">—</span>
                   <span class="pricing-rule-placeholder">—</span>
                 </ng-template>
-                <button type="button" class="button button-transparent button-small" (click)="removePricingRule(i)">Remove</button>
+                <button
+                  *ngIf="!pageFieldsReadOnly"
+                  type="button"
+                  class="button button-transparent button-small"
+                  (click)="removePricingRule(i)">
+                  Remove
+                </button>
               </div>
             </div>
-            <button type="button" class="button button-secondary" (click)="addPricingRule()">+ Add rule</button>
+            <button
+              type="button"
+              class="button button-secondary"
+              *ngIf="!pageFieldsReadOnly"
+              (click)="addPricingRule()"
+              [disabled]="pageFieldsReadOnly">
+              + Add rule
+            </button>
           </div>
 
           <div class="message message--error" *ngIf="pricingErrorMessage">{{ pricingErrorMessage }}</div>
           <div class="message message--success" *ngIf="pricingSuccessMessage">{{ pricingSuccessMessage }}</div>
-          <div class="form-actions">
-            <button type="button" class="button"
-              [disabled]="isSavingPricing"
-              (click)="savePricing()">
-              {{ isSavingPricing ? 'Saving...' : 'Save pricing' }}
+
+          <div class="pricing-form__page-actions" *ngIf="isEditMode && !clientPageViewOnly && pageEditUnlocked">
+            <button
+              type="button"
+              class="button button-transparent"
+              [disabled]="isSavingEntirePage"
+              (click)="cancelPageEdit()">
+              Cancel
+            </button>
+            <button type="button" class="button" [disabled]="isSavingEntirePage" (click)="saveEntireEditPage()">
+              {{ isSavingEntirePage ? 'Saving...' : 'Save' }}
             </button>
           </div>
         </div>
   </section>
+
+  <div class="create-page-footer-actions" *ngIf="!isEditMode && !clientPageViewOnly">
+    <button type="button" class="button button-transparent" (click)="goBack()">Cancel</button>
+    <button
+      type="button"
+      class="button"
+      [disabled]="isSubmitting || isCreateClientBlockedByPricing"
+      (click)="onSubmit()">
+      {{ isSubmitting ? 'Creating...' : 'Create Client' }}
+    </button>
+  </div>
+
+  <div
+    class="add-credits-modal-backdrop"
+    *ngIf="addCreditsModalOpen"
+    (click)="onAddCreditsBackdropClick($event)"
+    role="presentation">
+    <div
+      class="card add-credits-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="add-credits-heading"
+      (click)="$event.stopPropagation()">
+      <h2 id="add-credits-heading" class="card__title">Add credits</h2>
+      <p class="add-credits-modal__client-name">{{ clientForm.get('clientName')?.value }}</p>
+
+      <div class="client-form add-credits-modal__form">
+        <label class="form-group">
+          <span class="form-label">Credits</span>
+          <input
+            type="number"
+            class="form-input"
+            [(ngModel)]="addCreditsAmount"
+            [ngModelOptions]="{standalone: true}"
+            min="0.01"
+            step="0.01"
+            inputmode="decimal"
+            placeholder="e.g. 100"
+            [disabled]="addCreditsSubmitting" />
+        </label>
+
+        <div class="form-group form-group--add-credits-feature">
+          <span class="form-label form-label--feature" id="add-credits-feature-label">Feature</span>
+          <div
+            class="residency-dd add-credits-feature-dd"
+            [class.residency-dd--open]="addCreditsFeatureMenuOpen">
+            <button
+              type="button"
+              class="residency-dd__trigger add-credits-feature-dd__trigger"
+              id="add-credits-feature-trigger"
+              (click)="toggleAddCreditsFeatureMenu($event)"
+              [disabled]="addCreditsSubmitting"
+              [attr.aria-expanded]="addCreditsFeatureMenuOpen"
+              aria-haspopup="listbox"
+              aria-controls="add-credits-feature-listbox"
+              aria-labelledby="add-credits-feature-label">
+              <span class="residency-dd__value">{{ addCreditsFeatureDisplayLabel }}</span>
+              <span
+                class="residency-dd__chevron add-credits-feature-dd__chevron"
+                [class.add-credits-feature-dd__chevron--open]="addCreditsFeatureMenuOpen"
+                aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path
+                    d="M3 4.5L6 7.5L9 4.5"
+                    stroke="currentColor"
+                    stroke-width="1.35"
+                    stroke-linecap="round"
+                    stroke-linejoin="round" />
+                </svg>
+              </span>
+            </button>
+            <ul
+              *ngIf="addCreditsFeatureMenuOpen"
+              class="residency-dd__list add-credits-feature-dd__list"
+              id="add-credits-feature-listbox"
+              role="listbox"
+              aria-labelledby="add-credits-feature-label">
+              <li
+                *ngFor="let f of FEATURE_CODES"
+                class="residency-dd__option add-credits-feature-dd__option"
+                [class.residency-dd__option--selected]="addCreditsFeatureCode === f.value"
+                role="option"
+                [attr.aria-selected]="addCreditsFeatureCode === f.value"
+                (click)="selectAddCreditsFeature(f.value)">
+                {{ f.label }}
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <label class="form-group">
+          <span class="form-label">Expiry date</span>
+          <input
+            type="date"
+            class="form-input"
+            [(ngModel)]="addCreditsExpiry"
+            [ngModelOptions]="{standalone: true}"
+            [disabled]="addCreditsSubmitting" />
+        </label>
+
+        <div class="message message--error" *ngIf="addCreditsError">{{ addCreditsError }}</div>
+
+        <div class="add-credits-modal__actions">
+          <button
+            type="button"
+            class="button button-transparent"
+            [disabled]="addCreditsSubmitting"
+            (click)="closeAddCreditsModal()">
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="button"
+            [disabled]="addCreditsSubmitting"
+            (click)="submitAddCredits()">
+            {{ addCreditsSubmitting ? 'Adding…' : 'Add credits' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
