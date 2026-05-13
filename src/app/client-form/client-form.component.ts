@@ -156,7 +156,7 @@ export class ClientFormComponent implements OnInit {
   /** Add credits popup (Update Client toolbar). */
   addCreditsModalOpen = false;
   addCreditsAmount = '';
-  addCreditsFeatureCode = 'chat';
+  addCreditsFeatureCode = '';
   addCreditsExpiry = '';
   addCreditsFeatureMenuOpen = false;
   addCreditsError = '';
@@ -954,6 +954,9 @@ export class ClientFormComponent implements OnInit {
   }
 
   get addCreditsFeatureDisplayLabel(): string {
+    if (!this.addCreditsFeatureCode) {
+      return 'Select feature';
+    }
     return (
       this.FEATURE_CODES.find((f) => f.value === this.addCreditsFeatureCode)
         ?.label ?? this.addCreditsFeatureCode
@@ -979,7 +982,7 @@ export class ClientFormComponent implements OnInit {
   /** Clears add-credits form fields and dropdown state (safe to call when modal is closed). */
   private resetAddCreditsModalFields(): void {
     this.addCreditsAmount = '';
-    this.addCreditsFeatureCode = 'chat';
+    this.addCreditsFeatureCode = '';
     this.addCreditsExpiry = '';
     this.addCreditsFeatureMenuOpen = false;
     this.addCreditsError = '';
@@ -1007,7 +1010,8 @@ export class ClientFormComponent implements OnInit {
     if (this.addCreditsSubmitting) {
       return;
     }
-    this.addCreditsFeatureCode = value;
+    this.addCreditsFeatureCode =
+      this.addCreditsFeatureCode === value ? '' : value;
     this.addCreditsFeatureMenuOpen = false;
   }
 
@@ -1048,7 +1052,10 @@ export class ClientFormComponent implements OnInit {
     }
 
     const expiresAt = `${day}T23:59:59.000Z`;
-    const featureCode = this.pricingFeatureKeyForApi(this.addCreditsFeatureCode);
+    const selectedFeatureCode = this.addCreditsFeatureCode.trim();
+    const featureCode = selectedFeatureCode
+      ? this.pricingFeatureKeyForApi(selectedFeatureCode)
+      : undefined;
     const sourceRef =
       typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
         ? `admin-dashboard-${crypto.randomUUID()}`
@@ -1063,7 +1070,7 @@ export class ClientFormComponent implements OnInit {
           sourceRef,
           kind: 'paid',
           expiresAt,
-          featureCode,
+          ...(featureCode ? { featureCode } : {}),
           isBackfill: false,
           customTimestamp: null
         },
