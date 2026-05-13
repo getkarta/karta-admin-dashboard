@@ -30,7 +30,7 @@ export interface PostBillingCreditsRequest {
   sourceRef: string;
   kind: string;
   expiresAt: string;
-  featureCode: string;
+  featureCode?: string;
   isBackfill: boolean;
   customTimestamp: string | null;
 }
