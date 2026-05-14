@@ -29,7 +29,7 @@ export interface PostBillingCreditsRequest {
   amount: number;
   sourceRef: string;
   kind: string;
-  expiresAt: string;
+  expiresAt?: string;
   featureCode?: string;
   isBackfill: boolean;
   customTimestamp: string | null;
@@ -39,6 +39,7 @@ export interface PostBillingCreditsResponse {
   ok: boolean;
   remaining?: number;
   bucketId?: string;
+  featureCode?: string;
   alreadyApplied?: boolean;
   ledgerEntryId?: string | null;
   expiresAt?: string | null;

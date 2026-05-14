@@ -955,7 +955,7 @@ export class ClientFormComponent implements OnInit {
 
   get addCreditsFeatureDisplayLabel(): string {
     if (!this.addCreditsFeatureCode) {
-      return 'Select feature';
+      return 'None';
     }
     return (
       this.FEATURE_CODES.find((f) => f.value === this.addCreditsFeatureCode)
@@ -1010,8 +1010,7 @@ export class ClientFormComponent implements OnInit {
     if (this.addCreditsSubmitting) {
       return;
     }
-    this.addCreditsFeatureCode =
-      this.addCreditsFeatureCode === value ? '' : value;
+    this.addCreditsFeatureCode = value;
     this.addCreditsFeatureMenuOpen = false;
   }
 
@@ -1023,21 +1022,21 @@ export class ClientFormComponent implements OnInit {
       this.addCreditsError = 'Enter a positive credit amount.';
       return;
     }
-    if (!this.addCreditsExpiry?.trim()) {
-      this.addCreditsError = 'Select an expiry date.';
-      return;
-    }
     const day = this.addCreditsExpiry.trim();
-    const d = new Date(`${day}T12:00:00`);
-    if (Number.isNaN(d.getTime())) {
-      this.addCreditsError = 'Invalid expiry date.';
-      return;
-    }
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    if (d < start) {
-      this.addCreditsError = 'Expiry date must be today or later.';
-      return;
+    let expiresAt: string | undefined;
+    if (day) {
+      const d = new Date(`${day}T12:00:00`);
+      if (Number.isNaN(d.getTime())) {
+        this.addCreditsError = 'Invalid expiry date.';
+        return;
+      }
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      if (d < start) {
+        this.addCreditsError = 'Expiry date must be today or later.';
+        return;
+      }
+      expiresAt = `${day}T23:59:59.000Z`;
     }
 
     const accessToken = localStorage.getItem('accessToken');
@@ -1051,7 +1050,6 @@ export class ClientFormComponent implements OnInit {
       return;
     }
 
-    const expiresAt = `${day}T23:59:59.000Z`;
     const selectedFeatureCode = this.addCreditsFeatureCode.trim();
     const featureCode = selectedFeatureCode
       ? this.pricingFeatureKeyForApi(selectedFeatureCode)
@@ -1069,7 +1067,7 @@ export class ClientFormComponent implements OnInit {
           amount: n,
           sourceRef,
           kind: 'paid',
-          expiresAt,
+          ...(expiresAt ? { expiresAt } : {}),
           ...(featureCode ? { featureCode } : {}),
           isBackfill: false,
           customTimestamp: null
