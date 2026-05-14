@@ -955,7 +955,7 @@ export class ClientFormComponent implements OnInit {
 
   get addCreditsFeatureDisplayLabel(): string {
     if (!this.addCreditsFeatureCode) {
-      return 'None';
+      return 'All';
     }
     return (
       this.FEATURE_CODES.find((f) => f.value === this.addCreditsFeatureCode)
