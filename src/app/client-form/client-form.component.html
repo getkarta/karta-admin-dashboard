@@ -503,6 +503,14 @@
               role="listbox"
               aria-labelledby="add-credits-feature-label">
               <li
+                class="residency-dd__option add-credits-feature-dd__option"
+                [class.residency-dd__option--selected]="!addCreditsFeatureCode"
+                role="option"
+                [attr.aria-selected]="!addCreditsFeatureCode"
+                (click)="selectAddCreditsFeature('')">
+                None
+              </li>
+              <li
                 *ngFor="let f of FEATURE_CODES"
                 class="residency-dd__option add-credits-feature-dd__option"
                 [class.residency-dd__option--selected]="addCreditsFeatureCode === f.value"
@@ -516,7 +524,7 @@
         </div>
 
         <label class="form-group">
-          <span class="form-label">Expiry date</span>
+          <span class="form-label">Expiry date (optional)</span>
           <input
             type="date"
             class="form-input"
