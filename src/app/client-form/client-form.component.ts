@@ -71,6 +71,9 @@ export class ClientFormComponent implements OnInit {
   errorMessage = '';
   successMessage = '';
   isSubmitting = false;
+  isLoadingVoiceConcurrency = false;
+  voiceConcurrencyLoadMessage = '';
+  clientCredits: number | null = null;
 
   // Pricing: PUT /admin/billing/billing — body: clientCode, tier, allowNegativeBalance, customPricing, baseCreditUsage
   pricingErrorMessage = '';
@@ -146,12 +149,14 @@ export class ClientFormComponent implements OnInit {
   isLoadingDataResidencyOptions = false;
 
   /** Suggested values for the voice concurrency number field (datalist). */
-  readonly voiceConcurrencyOptions = [1, 2, 5, 10, 25, 50, 100] as const;
+  readonly voiceConcurrencyOptions = [0, 1, 2, 5, 10, 25, 50, 100] as const;
 
   clientForm: FormGroup;
 
   /** From `navigate(..., { state: { flashPricingError } })` after create + billing PUT failure. */
+  private pendingClientRouteFlash = '';
   private pendingPricingRouteFlash = '';
+  private pendingSuccessRouteFlash = '';
 
   /** Add credits popup (Update Client toolbar). */
   addCreditsModalOpen = false;
@@ -174,12 +179,20 @@ export class ClientFormComponent implements OnInit {
     if (typeof flash === 'string' && flash.trim()) {
       this.pendingPricingRouteFlash = flash.trim();
     }
+    const clientFlash = nav?.extras?.state?.['flashClientError'];
+    if (typeof clientFlash === 'string' && clientFlash.trim()) {
+      this.pendingClientRouteFlash = clientFlash.trim();
+    }
+    const successFlash = nav?.extras?.state?.['flashSuccessMessage'];
+    if (typeof successFlash === 'string' && successFlash.trim()) {
+      this.pendingSuccessRouteFlash = successFlash.trim();
+    }
     this.clientForm = this.fb.group({
       clientName: ['', [Validators.required, Validators.minLength(3)]],
       dataResidency: this.fb.nonNullable.control<string>('global'),
       voiceConcurrency: this.fb.nonNullable.control<number>(1, [
         Validators.required,
-        Validators.min(1)
+        Validators.min(0)
       ]),
       enabledAgents: this.fb.nonNullable.control<string[]>(['chat'])
     });
@@ -190,6 +203,13 @@ export class ClientFormComponent implements OnInit {
     return (
       this.dataResidencyOptions.find((o) => o.value === v)?.label ?? v ?? ''
     );
+  }
+
+  get clientCreditsDisplayLabel(): string {
+    if (this.clientCredits === null) {
+      return 'Credits: -';
+    }
+    return `Credits: ${this.formatCreditAmount(this.clientCredits)}`;
   }
 
   @HostListener('document:click', ['$event'])
@@ -328,9 +348,14 @@ export class ClientFormComponent implements OnInit {
     if (this.pageFieldsReadOnly) return;
     const rule = this.pricingRules[row];
     if (!rule) return;
-    if (field === 'feature') rule.featureCode = value;
-    else if (field === 'unit') rule.unitType = value;
-    else rule.rounding = value;
+    if (field === 'feature') {
+      rule.featureCode = value;
+      rule.unitType = this.defaultUnitTypeForPricingFeature(value);
+    } else if (field === 'unit') {
+      rule.unitType = value;
+    } else {
+      rule.rounding = value;
+    }
     this.pricingDd = null;
   }
 
@@ -353,6 +378,7 @@ export class ClientFormComponent implements OnInit {
       if (i >= 0) current.splice(i, 1);
     }
     ctrl?.patchValue(current);
+    this.syncPricingRulesWithEnabledAgents();
   }
 
   ngOnInit(): void {
@@ -365,6 +391,7 @@ export class ClientFormComponent implements OnInit {
       !!(typeof history !== 'undefined' && history.state?.viewOnly === true);
 
     if (!code) {
+      this.ensureCreatePricingDefaults();
       void this.loadDataResidencyOptions();
       return;
     }
@@ -380,6 +407,14 @@ export class ClientFormComponent implements OnInit {
   }
 
   private applyPendingPricingRouteFlash(): void {
+    if (this.pendingSuccessRouteFlash) {
+      this.successMessage = this.pendingSuccessRouteFlash;
+      this.pendingSuccessRouteFlash = '';
+    }
+    if (this.pendingClientRouteFlash) {
+      this.errorMessage = this.pendingClientRouteFlash;
+      this.pendingClientRouteFlash = '';
+    }
     if (!this.pendingPricingRouteFlash) {
       return;
     }
@@ -394,13 +429,10 @@ export class ClientFormComponent implements OnInit {
     }
     if (client) {
       await this.bootstrapEditFormWithClient(client);
-      // Directory “View” often opens from list rows without full `billing`; reload from API so pricing table matches server.
-      if (this.clientPageViewOnly) {
-        await this.loadClientByCode();
-      }
-    } else {
-      await this.loadClientByCode();
     }
+    // List rows can be partial or stale; always reload the full client before showing/editing.
+    await this.loadClientByCode();
+    await this.loadVoiceConcurrencyForCurrentClient();
   }
 
   private applyDirectoryViewOnlyMode(): void {
@@ -413,6 +445,80 @@ export class ClientFormComponent implements OnInit {
     this.dataResidencyMenuOpen = false;
     this.billingTierMenuOpen = false;
     this.pricingDd = null;
+  }
+
+  private ensureCreatePricingDefaults(): void {
+    if (this.isEditMode || this.clientPageViewOnly || this.pricingRules.length > 0) {
+      return;
+    }
+    this.pricingRules = [this.createDefaultPricingRule()];
+  }
+
+  get pricingFeatureOptions(): Array<{ value: string; label: string }> {
+    const allowed = this.allowedPricingFeatureCodes();
+    return this.FEATURE_CODES.filter((f) => allowed.includes(f.value));
+  }
+
+  get hasInvalidPricingCredits(): boolean {
+    return this.pricingRules.some((rule) =>
+      this.pricingRuleHasInvalidCredits(rule)
+    );
+  }
+
+  pricingRuleHasInvalidCredits(rule: { creditPerUnit: unknown }): boolean {
+    const creditPerUnit = Number(rule.creditPerUnit);
+    return !Number.isFinite(creditPerUnit) || creditPerUnit <= 0;
+  }
+
+  private allowedPricingFeatureCodes(): string[] {
+    const selected =
+      (this.clientForm?.get('enabledAgents')?.value as string[] | undefined) ??
+      [];
+    const selectedSet = new Set(
+      selected.map((value) => this.normalizeAgentValue(value))
+    );
+    return ['chat', 'voice'].filter((featureCode) =>
+      selectedSet.has(featureCode)
+    );
+  }
+
+  private isPricingFeatureAllowed(featureCode: string): boolean {
+    return this.allowedPricingFeatureCodes().includes(featureCode);
+  }
+
+  private defaultPricingFeatureCode(): string {
+    return this.pricingFeatureOptions[0]?.value ?? 'chat';
+  }
+
+  private defaultUnitTypeForPricingFeature(featureCode: string): string {
+    return featureCode === 'voice' ? 'minute' : 'message';
+  }
+
+  private syncPricingRulesWithEnabledAgents(): void {
+    const options = this.pricingFeatureOptions;
+    const allowed = new Set(options.map((option) => option.value));
+
+    if (allowed.size === 0) {
+      this.pricingRules = [];
+      this.pricingDd = null;
+      return;
+    }
+
+    const nextRules = this.pricingRules.filter((rule) =>
+      allowed.has(rule.featureCode)
+    );
+    if (nextRules.length !== this.pricingRules.length) {
+      this.pricingDd = null;
+    }
+    this.pricingRules = nextRules;
+
+    if (!this.isEditMode && !this.clientPageViewOnly) {
+      for (const option of options) {
+        if (!this.pricingRules.some((rule) => rule.featureCode === option.value)) {
+          this.pricingRules.push(this.createDefaultPricingRule(option.value));
+        }
+      }
+    }
   }
 
   get clientFormPageTitle(): string {
@@ -454,13 +560,294 @@ export class ClientFormComponent implements OnInit {
       out.dataResidency = dr.trim();
     }
     const vc = src['voiceConcurrency'] ?? src['voice_concurrency'];
-    if (vc !== undefined && vc !== null && vc !== '') {
-      const n = typeof vc === 'number' ? vc : Number(vc);
-      if (Number.isFinite(n) && Number.isInteger(n) && n >= 1) {
-        out.voiceConcurrency = n;
-      }
+    const n = this.parseVoiceConcurrency(vc);
+    if (n !== null) {
+      out.voiceConcurrency = n;
     }
     return out;
+  }
+
+  private setClientCreditsFromUnknown(
+    src: Record<string, unknown> | null | undefined,
+    clearWhenMissing: boolean
+  ): void {
+    const credits = this.extractClientCredits(src);
+    if (credits !== null) {
+      this.clientCredits = credits;
+      return;
+    }
+    if (clearWhenMissing) {
+      this.clientCredits = null;
+    }
+  }
+
+  private extractClientCredits(
+    src: Record<string, unknown> | null | undefined
+  ): number | null {
+    if (!src || typeof src !== 'object') {
+      return null;
+    }
+
+    const direct = this.extractCreditNumberFromObject(src);
+    if (direct !== null) {
+      return direct;
+    }
+
+    const billing = src['billing'] ?? src['bi'];
+    if (billing && typeof billing === 'object') {
+      const billingCredits = this.extractCreditNumberFromObject(
+        billing as Record<string, unknown>
+      );
+      if (billingCredits !== null) {
+        return billingCredits;
+      }
+    }
+
+    const credits = src['credits'] ?? src['credit'];
+    if (credits && typeof credits === 'object') {
+      return this.extractCreditNumberFromObject(
+        credits as Record<string, unknown>
+      );
+    }
+
+    return null;
+  }
+
+  private extractCreditNumberFromObject(
+    src: Record<string, unknown>
+  ): number | null {
+    const keys = [
+      'creditBalance',
+      'credit_balance',
+      'creditsBalance',
+      'credits_balance',
+      'remainingCredits',
+      'remaining_credits',
+      'availableCredits',
+      'available_credits',
+      'remaining',
+      'balance',
+      'credits'
+    ];
+    for (const key of keys) {
+      const n = this.parseFiniteNumber(src[key]);
+      if (n !== null) {
+        return n;
+      }
+    }
+    return null;
+  }
+
+  private parseFiniteNumber(value: unknown): number | null {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return null;
+      }
+      const n = Number(trimmed);
+      return Number.isFinite(n) ? n : null;
+    }
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  private formatCreditAmount(value: number): string {
+    return new Intl.NumberFormat('en-US', {
+      maximumFractionDigits: 2
+    }).format(value);
+  }
+
+  private extractEnabledAgents(src: Record<string, unknown>): string[] {
+    const raw =
+      src['enabledAgents'] ??
+      src['enabled_agents'] ??
+      src['agents'] ??
+      src['agentTypes'] ??
+      src['agent_types'];
+    return this.normalizeEnabledAgents(raw);
+  }
+
+  private normalizeEnabledAgents(value: unknown): string[] {
+    const known = new Set(this.availableAgents.map((a) => a.value));
+    const out: string[] = [];
+    const add = (raw: unknown) => {
+      const normalized = this.normalizeAgentValue(raw);
+      if (normalized && known.has(normalized) && !out.includes(normalized)) {
+        out.push(normalized);
+      }
+    };
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        add(item);
+      }
+      return out;
+    }
+
+    if (typeof value === 'string') {
+      for (const item of value.split(',')) {
+        add(item);
+      }
+      return out;
+    }
+
+    if (value && typeof value === 'object') {
+      for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+        if (typeof entry === 'boolean') {
+          if (entry) add(key);
+          continue;
+        }
+        if (typeof entry === 'string' || typeof entry === 'number') {
+          add(entry);
+          continue;
+        }
+        if (Array.isArray(entry)) {
+          for (const item of entry) add(item);
+          continue;
+        }
+        if (entry && typeof entry === 'object') {
+          const enabled =
+            (entry as { enabled?: unknown; active?: unknown }).enabled ??
+            (entry as { enabled?: unknown; active?: unknown }).active;
+          if (enabled !== false) add(key);
+        }
+      }
+    }
+
+    return out;
+  }
+
+  private normalizeAgentValue(value: unknown): string {
+    if (value && typeof value === 'object') {
+      const obj = value as Record<string, unknown>;
+      value =
+        obj['value'] ??
+        obj['type'] ??
+        obj['code'] ??
+        obj['name'] ??
+        obj['agent'] ??
+        obj['agentType'] ??
+        obj['agent_type'];
+    }
+    const raw = String(value ?? '').trim().toLowerCase();
+    if (!raw) {
+      return '';
+    }
+    const compact = raw
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/\bagents?\b/g, '')
+      .trim();
+    if (compact === 'chat' || compact === 'text') {
+      return 'chat';
+    }
+    if (compact === 'voice' || compact === 'call' || compact === 'calls') {
+      return 'voice';
+    }
+    if (compact === 'onboarding' || compact === 'kyc') {
+      return 'onboarding';
+    }
+    if (compact === 'audit' || compact === 'qa' || compact === 'quality') {
+      return 'audit';
+    }
+    return raw;
+  }
+
+  private parseVoiceConcurrency(value: unknown): number | null {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+    const n = typeof value === 'number' ? value : Number(value);
+    if (Number.isFinite(n) && Number.isInteger(n) && n >= 0) {
+      return n;
+    }
+    return null;
+  }
+
+  private shortClientIdForVoice(clientCode: string): string {
+    return String(clientCode ?? '').trim().split('_')[0]?.trim() ?? '';
+  }
+
+  private describeApiError(error: unknown): string {
+    if (error instanceof HttpErrorResponse) {
+      const body = error.error;
+      if (body && typeof body === 'object') {
+        const detail =
+          (body as { detail?: unknown }).detail ??
+          (body as { message?: unknown }).message ??
+          (body as { title?: unknown }).title;
+        if (typeof detail === 'string' && detail.trim()) {
+          return detail.trim();
+        }
+      }
+      if (typeof body === 'string' && body.trim()) {
+        return body.trim();
+      }
+      return error.statusText || `HTTP ${error.status}`;
+    }
+    if (error instanceof Error && error.message.trim()) {
+      return error.message.trim();
+    }
+    return 'Unknown error';
+  }
+
+  private async loadVoiceConcurrencyForCurrentClient(): Promise<void> {
+    if (!this.isEditMode || !this.clientCode?.trim()) {
+      return;
+    }
+    const accessToken = localStorage.getItem('accessToken');
+    if (!accessToken) {
+      this.voiceConcurrencyLoadMessage = 'Session expired. Please log in again.';
+      return;
+    }
+    const voiceClientId = this.shortClientIdForVoice(this.clientCode);
+    if (!voiceClientId || voiceClientId === 'N/A') {
+      this.voiceConcurrencyLoadMessage = 'Missing client code for voice concurrency.';
+      return;
+    }
+
+    this.isLoadingVoiceConcurrency = true;
+    this.voiceConcurrencyLoadMessage = '';
+    try {
+      const res = await this.api.getClientVoiceConcurrency(
+        voiceClientId,
+        accessToken
+      );
+      const n = this.parseVoiceConcurrency(res?.maxConcurrentDials);
+      if (n === null) {
+        this.voiceConcurrencyLoadMessage =
+          'Voice concurrency response did not include a valid value.';
+        return;
+      }
+      this.clientForm.patchValue({ voiceConcurrency: n });
+    } catch (error) {
+      console.error('Failed to load voice concurrency', error);
+      this.voiceConcurrencyLoadMessage =
+        `Could not load voice concurrency (${this.describeApiError(error)}).`;
+    } finally {
+      this.isLoadingVoiceConcurrency = false;
+    }
+  }
+
+  private async putVoiceConcurrencyForClient(
+    clientCode: string,
+    maxConcurrentDials: number,
+    accessToken: string
+  ): Promise<number> {
+    const voiceClientId = this.shortClientIdForVoice(clientCode);
+    if (!voiceClientId || voiceClientId === 'N/A') {
+      throw new Error('Missing client code for voice concurrency.');
+    }
+    const res = await this.api.putClientVoiceConcurrency(
+      voiceClientId,
+      maxConcurrentDials,
+      accessToken
+    );
+    const returnedValue = this.parseVoiceConcurrency(res?.maxConcurrentDials);
+    return returnedValue ?? maxConcurrentDials;
   }
 
   private async hydrateResidencyOptionsOnly(): Promise<void> {
@@ -491,9 +878,13 @@ export class ClientFormComponent implements OnInit {
 
   private async bootstrapEditFormWithClient(client: ClientRow): Promise<void> {
     await this.hydrateResidencyOptionsOnly();
+    this.setClientCreditsFromUnknown(
+      client as unknown as Record<string, unknown>,
+      false
+    );
     this.clientForm.patchValue({
       clientName: client.clientName,
-      enabledAgents: client.enabledAgents || [],
+      enabledAgents: this.normalizeEnabledAgents(client.enabledAgents),
       ...this.pickResidencyAndVoiceFromUnknown(
         client as unknown as Record<string, unknown>
       )
@@ -554,18 +945,27 @@ export class ClientFormComponent implements OnInit {
         return;
       }
       const rawObj = raw as Record<string, unknown>;
+      this.setClientCreditsFromUnknown(rawObj, true);
+      const loadedEnabledAgents = this.extractEnabledAgents(rawObj);
+      const fallbackEnabledAgents =
+        (this.clientForm.get('enabledAgents')?.value as string[] | undefined) ??
+        [];
       const client: ClientRow = {
         clientName: raw.clientName ?? raw.name ?? 'Unnamed Client',
         clientCode: raw.clientCode ?? raw.cod ?? this.clientCode,
-        enabledAgents: Array.isArray(raw.enabledAgents) ? raw.enabledAgents : [],
+        enabledAgents:
+          loadedEnabledAgents.length > 0
+            ? loadedEnabledAgents
+            : [...fallbackEnabledAgents],
         status: 'Active',
         owner: raw.owner ?? raw.createdBy ?? raw.email ?? 'Admin',
         createdOn: raw.createdOn ?? '',
-        billing: raw.billing ?? raw.bi
+        billing: raw.billing ?? raw.bi,
+        creditBalance: this.clientCredits ?? undefined
       };
       this.clientForm.patchValue({
         clientName: client.clientName,
-        enabledAgents: client.enabledAgents || [],
+        enabledAgents: client.enabledAgents,
         ...this.pickResidencyAndVoiceFromUnknown(rawObj)
       });
       this.syncDataResidencyWithOptions();
@@ -573,6 +973,48 @@ export class ClientFormComponent implements OnInit {
     } catch {
       this.errorMessage = 'Could not load client. You can still update by filling the form.';
     }
+  }
+
+  private clientRowFromUnknown(
+    res: unknown,
+    fallbackCode: string,
+    fallback: ClientRow
+  ): ClientRow {
+    const raw = ((res as any)?.client ?? res) as Record<string, unknown> | null;
+    if (!raw || typeof raw !== 'object') {
+      return fallback;
+    }
+    const loadedEnabledAgents = this.extractEnabledAgents(raw);
+    const loadedCredits = this.extractClientCredits(raw);
+    return {
+      ...fallback,
+      clientName:
+        (typeof raw['clientName'] === 'string' && raw['clientName'].trim()) ||
+        (typeof raw['name'] === 'string' && raw['name'].trim()) ||
+        fallback.clientName,
+      clientCode:
+        (typeof raw['clientCode'] === 'string' && raw['clientCode'].trim()) ||
+        (typeof raw['cod'] === 'string' && raw['cod'].trim()) ||
+        fallbackCode,
+      enabledAgents:
+        loadedEnabledAgents.length > 0
+          ? loadedEnabledAgents
+          : [...(fallback.enabledAgents ?? [])],
+      owner:
+        (typeof raw['owner'] === 'string' && raw['owner'].trim()) ||
+        (typeof raw['createdBy'] === 'string' && raw['createdBy'].trim()) ||
+        (typeof raw['email'] === 'string' && raw['email'].trim()) ||
+        fallback.owner,
+      createdOn:
+        (typeof raw['createdOn'] === 'string' && raw['createdOn'].trim()) ||
+        (typeof raw['createdAt'] === 'string' && raw['createdAt'].trim()) ||
+        fallback.createdOn,
+      billing: (raw['billing'] ?? raw['bi'] ?? fallback.billing) as ClientRow['billing'],
+      creditBalance:
+        loadedCredits !== null
+          ? loadedCredits
+          : fallback.creditBalance
+    };
   }
 
   /**
@@ -590,10 +1032,15 @@ export class ClientFormComponent implements OnInit {
 
   private applyBillingFromClient(client: ClientRow): void {
     const billing = (client as any)?.billing ?? (client as any)?.bi;
+    this.setClientCreditsFromUnknown(
+      client as unknown as Record<string, unknown>,
+      false
+    );
     if (!billing) {
       this.billingTier = 'enterprise';
       this.allowNegativeBalance = true;
       this.pricingRules = [];
+      this.syncPricingRulesWithEnabledAgents();
       return;
     }
     this.billingTier = (billing.tier && billing.tier !== 'free') ? billing.tier : 'basic';
@@ -622,6 +1069,7 @@ export class ClientFormComponent implements OnInit {
         }
       }
     }
+    this.syncPricingRulesWithEnabledAgents();
   }
 
   async onSubmit(): Promise<void> {
@@ -649,9 +1097,9 @@ export class ClientFormComponent implements OnInit {
     if (
       !Number.isFinite(voiceConcurrency) ||
       !Number.isInteger(voiceConcurrency) ||
-      voiceConcurrency < 1
+      voiceConcurrency < 0
     ) {
-      this.errorMessage = 'Voice concurrency must be a positive whole number.';
+      this.errorMessage = 'Voice concurrency must be a whole number of 0 or more.';
       this.isSubmitting = false;
       return;
     }
@@ -680,7 +1128,6 @@ export class ClientFormComponent implements OnInit {
         {
           clientName: formValue.clientName,
           dataResidency: formValue.dataResidency,
-          voiceConcurrency,
           enabledAgents: formValue.enabledAgents
         },
         accessToken
@@ -691,12 +1138,45 @@ export class ClientFormComponent implements OnInit {
         await this.router.navigate(['/clients'], {
           state: {
             listFlashMessage:
-              'Client was created, but the server did not return a client code, so pricing was not saved. Open the client from the list and use Edit to set billing.'
+              'Client was created, but the server did not return a client code, so voice concurrency and pricing were not saved. Open the client from the list and use Edit to save them.'
           }
         });
         return;
       }
 
+      let createdClientSnapshot: ClientRow = {
+        clientName: formValue.clientName,
+        clientCode: newCode,
+        enabledAgents: formValue.enabledAgents ?? [],
+        status: 'Active',
+        owner: '',
+        createdOn: '',
+        voiceConcurrency
+      };
+      try {
+        createdClientSnapshot = this.clientRowFromUnknown(
+          await this.api.getClientByCode(newCode, accessToken),
+          newCode,
+          createdClientSnapshot
+        );
+      } catch (loadErr) {
+        console.error('Created client reload failed', loadErr);
+      }
+
+      let savedVoiceConcurrency = voiceConcurrency;
+      let concurrencyError = '';
+      try {
+        savedVoiceConcurrency = await this.putVoiceConcurrencyForClient(
+          newCode,
+          voiceConcurrency,
+          accessToken
+        );
+      } catch (concurrencyErr) {
+        console.error(concurrencyErr);
+        concurrencyError = this.describeApiError(concurrencyErr);
+      }
+
+      let billingError = '';
       try {
         await this.putBillingBilling(
           this.buildBillingPutBody(newCode),
@@ -704,35 +1184,49 @@ export class ClientFormComponent implements OnInit {
         );
       } catch (billingErr) {
         console.error(billingErr);
-        const detail =
-          billingErr instanceof HttpErrorResponse
-            ? (typeof billingErr.error?.message === 'string'
-                ? billingErr.error.message
-                : billingErr.statusText)
-            : 'Unknown error';
+        billingError = this.describeApiError(billingErr);
+      }
+
+      if (concurrencyError || billingError) {
         await this.router.navigate(
           ['/clients', newCode, 'edit'],
           {
             state: {
               client: {
-                clientName: formValue.clientName,
-                clientCode: newCode,
-                enabledAgents: formValue.enabledAgents ?? [],
-                status: 'Active',
-                owner: '',
-                createdOn: ''
+                ...createdClientSnapshot,
+                voiceConcurrency: savedVoiceConcurrency
               } as ClientRow,
-              flashPricingError: `Client was created, but saving pricing failed (${detail}). Open the client, click Edit, then Save to set billing.`
+              ...(concurrencyError
+                ? {
+                    flashClientError:
+                      `Client was created, but saving voice concurrency failed (${concurrencyError}). Click Edit, then Save to retry.`
+                  }
+                : {}),
+              ...(billingError
+                ? {
+                    flashPricingError:
+                      `Client was created, but saving pricing failed (${billingError}). Open the client, click Edit, then Save to set billing.`
+                  }
+                : {})
             }
           }
         );
         return;
       }
 
-      this.successMessage =
-        'Client created successfully. Pricing and billing were saved.';
-
-      await this.router.navigate(['/clients']);
+      await this.router.navigate(
+        ['/clients', newCode, 'edit'],
+        {
+          state: {
+            client: {
+              ...createdClientSnapshot,
+              voiceConcurrency: savedVoiceConcurrency
+            } as ClientRow,
+            flashSuccessMessage:
+              'Client created successfully. Voice concurrency, pricing, and billing were saved. You can add credits from this page.'
+          }
+        }
+      );
     } catch (error) {
       console.error(error);
       this.errorMessage = 'Unable to create client right now.';
@@ -743,13 +1237,27 @@ export class ClientFormComponent implements OnInit {
 
   addPricingRule(): void {
     if (this.pageFieldsReadOnly) return;
+    if (this.pricingFeatureOptions.length === 0) {
+      this.pricingErrorMessage =
+        'Select Chat Agent or Voice Agent before adding custom pricing.';
+      return;
+    }
     this.pricingDd = null;
-    this.pricingRules.push({
-      featureCode: 'chat',
-      unitType: 'message',
-      creditPerUnit: 1,
+    this.pricingRules.push(this.createDefaultPricingRule());
+  }
+
+  private createDefaultPricingRule(featureCode = this.defaultPricingFeatureCode()): {
+    featureCode: string;
+    unitType: string;
+    creditPerUnit: number;
+    rounding: string;
+  } {
+    return {
+      featureCode,
+      unitType: this.defaultUnitTypeForPricingFeature(featureCode),
+      creditPerUnit: 0,
       rounding: 'ceil'
-    });
+    };
   }
 
   removePricingRule(index: number): void {
@@ -765,12 +1273,15 @@ export class ClientFormComponent implements OnInit {
   /** Same payload shape as `PUT …/billing/billing` for create + edit flows. */
   private validatePricingRulesForBilling(): string | null {
     for (const row of this.pricingRules) {
-      const creditPerUnit = Number(row.creditPerUnit);
-      if (!Number.isFinite(creditPerUnit) || creditPerUnit <= 0) {
-        return `Credit per unit must be a positive number for ${row.featureCode} / ${row.unitType}.`;
-      }
       if (!row.featureCode?.trim() || !row.unitType?.trim()) {
         return 'Feature and unit type are required for each rule.';
+      }
+      if (!this.isPricingFeatureAllowed(row.featureCode)) {
+        const featureLabel = this.pricingRuleFieldLabelForRule(row, 'feature');
+        return `${featureLabel} pricing is not available for the selected agents.`;
+      }
+      if (this.pricingRuleHasInvalidCredits(row)) {
+        return `Credits must be greater than 0 for ${row.featureCode} / ${row.unitType}.`;
       }
     }
     return null;
@@ -1081,6 +1592,9 @@ export class ClientFormComponent implements OnInit {
       }
 
       const remaining = res.remaining;
+      if (typeof remaining === 'number' && Number.isFinite(remaining)) {
+        this.clientCredits = remaining;
+      }
       if (res.alreadyApplied) {
         this.successMessage =
           typeof remaining === 'number'
@@ -1113,6 +1627,10 @@ export class ClientFormComponent implements OnInit {
 
   startPageEdit(): void {
     if (!this.isEditMode || this.clientPageViewOnly) {
+      return;
+    }
+    if (this.isLoadingVoiceConcurrency) {
+      this.errorMessage = 'Wait for voice concurrency to finish loading before editing.';
       return;
     }
     this.captureEditPageSnapshot();
@@ -1166,9 +1684,9 @@ export class ClientFormComponent implements OnInit {
     if (
       !Number.isFinite(voiceConcurrency) ||
       !Number.isInteger(voiceConcurrency) ||
-      voiceConcurrency < 1
+      voiceConcurrency < 0
     ) {
-      this.errorMessage = 'Voice concurrency must be a positive whole number.';
+      this.errorMessage = 'Voice concurrency must be a whole number of 0 or more.';
       return;
     }
 
@@ -1190,11 +1708,18 @@ export class ClientFormComponent implements OnInit {
         {
           clientName: formValue.clientName,
           enabledAgents: formValue.enabledAgents,
-          dataResidency: formValue.dataResidency,
-          voiceConcurrency
+          dataResidency: formValue.dataResidency
         },
         accessToken
       );
+
+      const savedVoiceConcurrency = await this.putVoiceConcurrencyForClient(
+        this.clientCode,
+        voiceConcurrency,
+        accessToken
+      );
+      this.clientForm.patchValue({ voiceConcurrency: savedVoiceConcurrency });
+      this.voiceConcurrencyLoadMessage = '';
 
       const billingRes = await this.putBillingBilling(
         this.buildBillingPutBody(this.clientCode.trim()),
@@ -1209,7 +1734,8 @@ export class ClientFormComponent implements OnInit {
 
       this.pageEditUnlocked = false;
       this.editPageCancelSnapshot = null;
-      this.successMessage = 'Client and pricing saved successfully.';
+      this.successMessage =
+        'Client, voice concurrency, and pricing saved successfully.';
       const billingMsg = billingRes?.message?.trim();
       if (billingMsg) {
         this.pricingSuccessMessage = billingMsg;

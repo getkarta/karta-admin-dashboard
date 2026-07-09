@@ -10,14 +10,17 @@
   <div
     class="client-form-card-toolbar"
     *ngIf="isEditMode && !clientPageViewOnly && !pageEditUnlocked">
-    <button type="button" class="button" (click)="startPageEdit()">Edit</button>
+    <button type="button" class="button" [disabled]="isLoadingVoiceConcurrency" (click)="startPageEdit()">Edit</button>
     <button type="button" class="button" (click)="openAddCreditsModal()">Add credits</button>
   </div>
 
   <section class="card client-form-card">
       <div class="client-form-card__header">
         <h2 class="card__title">Basic information</h2>
-        <span class="client-badge" *ngIf="isEditMode && clientCode">{{ clientCode }}</span>
+        <div class="client-badges" *ngIf="isEditMode && clientCode">
+          <span class="client-badge">{{ clientCode }}</span>
+          <span class="client-badge client-badge--credits">{{ clientCreditsDisplayLabel }}</span>
+        </div>
       </div>
       <form [formGroup]="clientForm" (ngSubmit)="onClientFormSubmit($event)" class="client-form">
         <ng-template #residencyAndVoiceFields>
@@ -73,15 +76,21 @@
               type="number"
               formControlName="voiceConcurrency"
               class="form-input form-input--fit-label"
-              min="1"
+              min="0"
               step="1"
               inputmode="numeric"
               list="voice-concurrency-presets"
-              placeholder="e.g. 5"
-              [disabled]="pageFieldsReadOnly" />
+              placeholder="e.g. 0"
+              [disabled]="pageFieldsReadOnly || isLoadingVoiceConcurrency" />
             <datalist id="voice-concurrency-presets">
               <option *ngFor="let n of voiceConcurrencyOptions" [attr.value]="n"></option>
             </datalist>
+            <small class="field-help" *ngIf="isLoadingVoiceConcurrency">
+              Loading voice concurrency…
+            </small>
+            <small class="field-error" *ngIf="voiceConcurrencyLoadMessage">
+              {{ voiceConcurrencyLoadMessage }}
+            </small>
           </label>
         </ng-template>
 
@@ -274,7 +283,7 @@
                     role="listbox"
                     aria-label="Feature">
                     <li
-                      *ngFor="let f of FEATURE_CODES"
+                      *ngFor="let f of pricingFeatureOptions"
                       class="residency-dd__option"
                       [class.residency-dd__option--selected]="rule.featureCode === f.value"
                       role="option"
@@ -325,9 +334,13 @@
                   [(ngModel)]="rule.creditPerUnit"
                   [ngModelOptions]="{ standalone: true }"
                   class="form-input pricing-rule__control"
+                  [class.form-input--invalid]="pricingRuleHasInvalidCredits(rule)"
+                  [attr.aria-invalid]="pricingRuleHasInvalidCredits(rule) ? 'true' : null"
                   placeholder="Credits"
-                  min="0.01"
+                  min="0"
                   step="0.01"
+                  autocomplete="off"
+                  [attr.name]="'pricing-credit-' + i"
                   [disabled]="pageFieldsReadOnly">
                 <div
                   class="residency-dd pricing-rule-dd"
@@ -398,12 +411,20 @@
                 </button>
               </div>
             </div>
+            <p class="field-error pricing-validation-message" *ngIf="!pageFieldsReadOnly && hasInvalidPricingCredits">
+              Credits must be greater than 0 for each custom pricing rule.
+            </p>
+            <p
+              class="field-error pricing-validation-message"
+              *ngIf="!pageFieldsReadOnly && pricingFeatureOptions.length === 0">
+              Select Chat Agent or Voice Agent before adding custom pricing.
+            </p>
             <button
               type="button"
               class="button button-secondary"
               *ngIf="!pageFieldsReadOnly"
               (click)="addPricingRule()"
-              [disabled]="pageFieldsReadOnly">
+              [disabled]="pageFieldsReadOnly || pricingFeatureOptions.length === 0">
               + Add rule
             </button>
           </div>
@@ -415,11 +436,11 @@
             <button
               type="button"
               class="button button-transparent"
-              [disabled]="isSavingEntirePage"
+              [disabled]="isSavingEntirePage || isLoadingVoiceConcurrency"
               (click)="cancelPageEdit()">
               Cancel
             </button>
-            <button type="button" class="button" [disabled]="isSavingEntirePage" (click)="saveEntireEditPage()">
+            <button type="button" class="button" [disabled]="isSavingEntirePage || isLoadingVoiceConcurrency" (click)="saveEntireEditPage()">
               {{ isSavingEntirePage ? 'Saving...' : 'Save' }}
             </button>
           </div>

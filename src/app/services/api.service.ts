@@ -47,6 +47,11 @@ export interface PostBillingCreditsResponse {
   idempotencyKey?: string;
 }
 
+export interface VoiceConcurrencyResponse {
+  client_id: string;
+  maxConcurrentDials: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private readonly apiBase = environment.apiUrl.replace(/\/$/, '');
@@ -62,6 +67,27 @@ export class ApiService {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json'
     });
+  }
+
+  private voiceAdminHeaders(
+    token: string,
+    requestId: string,
+    includeContentType = false
+  ): HttpHeaders {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      'X-Request-ID': requestId
+    };
+    if (includeContentType) {
+      headers['Content-Type'] = 'application/json';
+    }
+    return new HttpHeaders(headers);
+  }
+
+  private createVoiceConcurrencyRequestId(action: 'read' | 'update'): string {
+    const random = Math.random().toString(36).slice(2, 10);
+    return `admin-concurrency-${action}-${Date.now().toString(36)}-${random}`;
   }
 
   postLogin(email: string, password: string): Promise<LoginResponse> {
@@ -185,7 +211,6 @@ export class ApiService {
     body: {
       clientName: string;
       dataResidency: string;
-      voiceConcurrency: number;
       enabledAgents: string[];
     },
     accessToken: string
@@ -204,7 +229,6 @@ export class ApiService {
       clientName: string;
       enabledAgents: string[];
       dataResidency: string;
-      voiceConcurrency: number;
     },
     accessToken: string
   ): Promise<unknown> {
@@ -213,6 +237,47 @@ export class ApiService {
       this.http.put<unknown>(`${this.apiBase}/clients/${enc}`, body, {
         headers: this.jsonAuthHeaders(accessToken)
       })
+    );
+  }
+
+  /** GET …/v1/voice/clients/:clientId/concurrency */
+  getClientVoiceConcurrency(
+    clientId: string,
+    accessToken: string
+  ): Promise<VoiceConcurrencyResponse> {
+    const enc = encodeURIComponent(clientId);
+    return firstValueFrom(
+      this.http.get<VoiceConcurrencyResponse>(
+        `${this.apiBase}/v1/voice/clients/${enc}/concurrency`,
+        {
+          headers: this.voiceAdminHeaders(
+            accessToken,
+            this.createVoiceConcurrencyRequestId('read')
+          )
+        }
+      )
+    );
+  }
+
+  /** PUT …/v1/voice/clients/:clientId/concurrency */
+  putClientVoiceConcurrency(
+    clientId: string,
+    maxConcurrentDials: number,
+    accessToken: string
+  ): Promise<VoiceConcurrencyResponse> {
+    const enc = encodeURIComponent(clientId);
+    return firstValueFrom(
+      this.http.put<VoiceConcurrencyResponse>(
+        `${this.apiBase}/v1/voice/clients/${enc}/concurrency`,
+        { maxConcurrentDials },
+        {
+          headers: this.voiceAdminHeaders(
+            accessToken,
+            this.createVoiceConcurrencyRequestId('update'),
+            true
+          )
+        }
+      )
     );
   }
 
