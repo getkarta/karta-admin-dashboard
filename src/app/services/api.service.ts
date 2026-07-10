@@ -212,6 +212,23 @@ export class ApiService {
       clientName: string;
       dataResidency: string;
       enabledAgents: string[];
+      voice_concurrency: number;
+      tier: string;
+      allowNegativeBalance: boolean;
+      customPricing: Record<
+        string,
+        Record<
+          string,
+          {
+            creditPerUnit: number;
+            unit?: string;
+            rounding?: string;
+            intervalSeconds?: number;
+            minimumSeconds?: number;
+          }
+        >
+      >;
+      baseCreditUsage: { prompt_builder: boolean };
     },
     accessToken: string
   ): Promise<unknown> {

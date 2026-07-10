@@ -70,7 +70,9 @@
             </small>
           </div>
 
-          <label class="form-group form-group--data-residency">
+          <label
+            class="form-group form-group--data-residency form-group--voice-concurrency"
+            *ngIf="isAgentEnabled('voice')">
             <span class="form-label">Voice concurrency</span>
             <input
               type="number"
@@ -319,7 +321,7 @@
                     role="listbox"
                     aria-label="Unit type">
                     <li
-                      *ngFor="let u of UNIT_TYPES"
+                      *ngFor="let u of pricingUnitOptionsForRule(rule)"
                       class="residency-dd__option"
                       [class.residency-dd__option--selected]="rule.unitType === u.value"
                       role="option"

@@ -12,9 +12,19 @@ import { ClientRow } from '../clients/clients.component';
 import {
   ClientSettingsMetaService,
   DEFAULT_DATA_RESIDENCY_OPTIONS,
-  DataResidencyOption
+  DataResidencyOption,
+  FeatureUnitTypeOption
 } from '../services/client-settings-meta.service';
 import { ApiService } from '../services/api.service';
+
+type PricingRule = {
+  featureCode: string;
+  unitType: string;
+  creditPerUnit: number;
+  rounding: string;
+  intervalSeconds?: number;
+  minimumSeconds?: number;
+};
 
 @Component({
   selector: 'app-client-form',
@@ -56,14 +66,7 @@ export class ClientFormComponent implements OnInit {
     billingTier: string;
     allowNegativeBalance: boolean;
     baseCreditUsagePromptBuilder: boolean;
-    pricingRules: Array<{
-      featureCode: string;
-      unitType: string;
-      creditPerUnit: number;
-      rounding: string;
-      intervalSeconds?: number;
-      minimumSeconds?: number;
-    }>;
+    pricingRules: PricingRule[];
   } | null = null;
   /** Save (client PUT + billing PUT) from the actions below Pricing & Billing. */
   isSavingEntirePage = false;
@@ -88,14 +91,7 @@ export class ClientFormComponent implements OnInit {
   pricingDd: { row: number; field: 'feature' | 'unit' | 'rounding' } | null =
     null;
   /** Flat list of custom pricing rules; each row becomes customPricing[featureCode][unitType] */
-  pricingRules: Array<{
-    featureCode: string;
-    unitType: string;
-    creditPerUnit: number;
-    rounding: string;
-    intervalSeconds?: number;
-    minimumSeconds?: number;
-  }> = [];
+  pricingRules: PricingRule[] = [];
 
   // Backend-aligned constants for dropdowns
   readonly BILLING_TIERS = [
@@ -146,6 +142,7 @@ export class ClientFormComponent implements OnInit {
   dataResidencyOptions: DataResidencyOption[] = [
     ...DEFAULT_DATA_RESIDENCY_OPTIONS
   ];
+  featureUnitTypeOptions: FeatureUnitTypeOption[] = [];
   isLoadingDataResidencyOptions = false;
 
   /** Suggested values for the voice concurrency number field (datalist). */
@@ -190,11 +187,11 @@ export class ClientFormComponent implements OnInit {
     this.clientForm = this.fb.group({
       clientName: ['', [Validators.required, Validators.minLength(3)]],
       dataResidency: this.fb.nonNullable.control<string>('global'),
-      voiceConcurrency: this.fb.nonNullable.control<number>(1, [
+      voiceConcurrency: this.fb.nonNullable.control<number>(0, [
         Validators.required,
         Validators.min(0)
       ]),
-      enabledAgents: this.fb.nonNullable.control<string[]>(['chat'])
+      enabledAgents: this.fb.nonNullable.control<string[]>(['voice'])
     });
   }
 
@@ -330,6 +327,9 @@ export class ClientFormComponent implements OnInit {
     }
     if (field === 'unit') {
       return (
+        this.pricingUnitOptionsForFeature(rule.featureCode).find(
+          (o) => o.value === rule.unitType
+        )?.label ??
         this.UNIT_TYPES.find((o) => o.value === rule.unitType)?.label ??
         rule.unitType
       );
@@ -451,12 +451,29 @@ export class ClientFormComponent implements OnInit {
     if (this.isEditMode || this.clientPageViewOnly || this.pricingRules.length > 0) {
       return;
     }
-    this.pricingRules = [this.createDefaultPricingRule()];
+    this.syncPricingRulesWithEnabledAgents();
   }
 
   get pricingFeatureOptions(): Array<{ value: string; label: string }> {
     const allowed = this.allowedPricingFeatureCodes();
-    return this.FEATURE_CODES.filter((f) => allowed.includes(f.value));
+    const featureOptions = this.FEATURE_CODES.filter((f) =>
+      allowed.includes(f.value)
+    );
+    const metaFeatureCodes = new Set(
+      this.featureUnitTypeOptions
+        .map((o) => this.pricingFeatureKeyFromApi(o.featureCode))
+        .filter((value) => value.trim())
+    );
+    if (metaFeatureCodes.size === 0) {
+      return featureOptions;
+    }
+    return featureOptions.filter((f) => metaFeatureCodes.has(f.value));
+  }
+
+  pricingUnitOptionsForRule(
+    rule: Pick<PricingRule, 'featureCode'>
+  ): Array<{ value: string; label: string }> {
+    return this.pricingUnitOptionsForFeature(rule.featureCode);
   }
 
   get hasInvalidPricingCredits(): boolean {
@@ -491,7 +508,10 @@ export class ClientFormComponent implements OnInit {
   }
 
   private defaultUnitTypeForPricingFeature(featureCode: string): string {
-    return featureCode === 'voice' ? 'minute' : 'message';
+    return (
+      this.pricingUnitOptionsForFeature(featureCode)[0]?.value ??
+      (featureCode === 'voice' ? 'minute' : 'message')
+    );
   }
 
   private syncPricingRulesWithEnabledAgents(): void {
@@ -504,21 +524,170 @@ export class ClientFormComponent implements OnInit {
       return;
     }
 
-    const nextRules = this.pricingRules.filter((rule) =>
+    let nextRules = this.pricingRules.filter((rule) =>
       allowed.has(rule.featureCode)
     );
+
+    if (!this.isEditMode && !this.clientPageViewOnly) {
+      const defaultRules = this.defaultPricingRulesForCreate();
+      const defaultKeys = new Set(
+        defaultRules.map((rule) =>
+          this.pricingRuleKey(rule.featureCode, rule.unitType)
+        )
+      );
+
+      if (this.hasFeatureUnitTypeOptionsForSelectedAgents()) {
+        nextRules = nextRules.filter((rule) =>
+          defaultKeys.has(this.pricingRuleKey(rule.featureCode, rule.unitType))
+        );
+      }
+
+      const nextKeys = new Set(
+        nextRules.map((rule) =>
+          this.pricingRuleKey(rule.featureCode, rule.unitType)
+        )
+      );
+      for (const defaultRule of defaultRules) {
+        const key = this.pricingRuleKey(
+          defaultRule.featureCode,
+          defaultRule.unitType
+        );
+        if (!nextKeys.has(key)) {
+          nextRules.push(defaultRule);
+          nextKeys.add(key);
+        }
+      }
+    }
+
     if (nextRules.length !== this.pricingRules.length) {
       this.pricingDd = null;
     }
     this.pricingRules = nextRules;
+  }
 
-    if (!this.isEditMode && !this.clientPageViewOnly) {
-      for (const option of options) {
-        if (!this.pricingRules.some((rule) => rule.featureCode === option.value)) {
-          this.pricingRules.push(this.createDefaultPricingRule(option.value));
-        }
-      }
+  private pricingUnitOptionsForFeature(
+    featureCode: string
+  ): Array<{ value: string; label: string }> {
+    const featureOptions = this.featureUnitOptionsForFeature(featureCode);
+    if (featureOptions.length === 0) {
+      return this.UNIT_TYPES;
     }
+
+    return featureOptions.map((option) => {
+      const fallbackLabel =
+        this.UNIT_TYPES.find((u) => u.value === option.unitType)?.label ??
+        option.unitType;
+      return {
+        value: option.unitType,
+        label: option.unitLabel ?? fallbackLabel
+      };
+    });
+  }
+
+  private featureUnitOptionsForFeature(
+    featureCode: string
+  ): FeatureUnitTypeOption[] {
+    const normalizedFeatureCode = this.pricingFeatureKeyFromApi(featureCode);
+    const seen = new Set<string>();
+    const out: FeatureUnitTypeOption[] = [];
+
+    for (const option of this.featureUnitTypeOptions) {
+      const optionFeatureCode = this.pricingFeatureKeyFromApi(
+        option.featureCode
+      );
+      const unitType = String(option.unitType ?? '').trim();
+      if (optionFeatureCode !== normalizedFeatureCode || !unitType) {
+        continue;
+      }
+      const key = this.pricingRuleKey(optionFeatureCode, unitType);
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      out.push({
+        ...option,
+        featureCode: optionFeatureCode,
+        unitType
+      });
+    }
+
+    return out;
+  }
+
+  private featureUnitOptionsForSelectedAgents(): FeatureUnitTypeOption[] {
+    const allowed = new Set(this.allowedPricingFeatureCodes());
+    const seen = new Set<string>();
+    const out: FeatureUnitTypeOption[] = [];
+
+    for (const option of this.featureUnitTypeOptions) {
+      const featureCode = this.pricingFeatureKeyFromApi(option.featureCode);
+      const unitType = String(option.unitType ?? '').trim();
+      if (!allowed.has(featureCode) || !unitType) {
+        continue;
+      }
+      const key = this.pricingRuleKey(featureCode, unitType);
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      out.push({
+        ...option,
+        featureCode,
+        unitType
+      });
+    }
+
+    return out;
+  }
+
+  private hasFeatureUnitTypeOptionsForSelectedAgents(): boolean {
+    return this.featureUnitOptionsForSelectedAgents().length > 0;
+  }
+
+  private defaultPricingRulesForCreate(): PricingRule[] {
+    const rulesFromMeta = this.featureUnitOptionsForSelectedAgents().map(
+      (option) => this.createPricingRuleFromFeatureUnitOption(option)
+    );
+    if (rulesFromMeta.length > 0) {
+      return rulesFromMeta;
+    }
+    return this.pricingFeatureOptions.map((option) =>
+      this.createDefaultPricingRule(option.value)
+    );
+  }
+
+  private createPricingRuleFromFeatureUnitOption(
+    option: FeatureUnitTypeOption
+  ): PricingRule {
+    const rule: PricingRule = {
+      featureCode: option.featureCode,
+      unitType: option.unitType,
+      creditPerUnit:
+        typeof option.creditPerUnit === 'number' &&
+        Number.isFinite(option.creditPerUnit)
+          ? option.creditPerUnit
+          : 0,
+      rounding: option.rounding || 'ceil'
+    };
+
+    if (
+      option.intervalSeconds !== undefined &&
+      Number.isFinite(option.intervalSeconds)
+    ) {
+      rule.intervalSeconds = option.intervalSeconds;
+    }
+    if (
+      option.minimumSeconds !== undefined &&
+      Number.isFinite(option.minimumSeconds)
+    ) {
+      rule.minimumSeconds = option.minimumSeconds;
+    }
+
+    return rule;
+  }
+
+  private pricingRuleKey(featureCode: string, unitType: string): string {
+    return `${String(featureCode ?? '').trim()}::${String(unitType ?? '').trim()}`;
   }
 
   get clientFormPageTitle(): string {
@@ -858,6 +1027,8 @@ export class ClientFormComponent implements OnInit {
         meta.dataResidencyOptions.length > 0
           ? meta.dataResidencyOptions
           : [...DEFAULT_DATA_RESIDENCY_OPTIONS];
+      this.featureUnitTypeOptions = meta.featureUnitTypeOptions ?? [];
+      this.syncPricingRulesWithEnabledAgents();
     } finally {
       this.isLoadingDataResidencyOptions = false;
     }
@@ -901,27 +1072,28 @@ export class ClientFormComponent implements OnInit {
         meta.dataResidencyOptions.length > 0
           ? meta.dataResidencyOptions
           : [...DEFAULT_DATA_RESIDENCY_OPTIONS];
+      this.featureUnitTypeOptions = meta.featureUnitTypeOptions ?? [];
 
       const globalOption = this.dataResidencyOptions.find(
         (o) => o.value.toLowerCase() === 'global'
       );
       if (globalOption) {
         this.clientForm.patchValue({ dataResidency: globalOption.value });
-        return;
-      }
+      } else {
+        const preferred =
+          meta.defaultDataResidency &&
+          this.dataResidencyOptions.some(
+            (o) => o.value === meta.defaultDataResidency
+          )
+            ? meta.defaultDataResidency
+            : (this.dataResidencyOptions[0]?.value ?? 'global');
 
-      const preferred =
-        meta.defaultDataResidency &&
-        this.dataResidencyOptions.some(
-          (o) => o.value === meta.defaultDataResidency
-        )
-          ? meta.defaultDataResidency
-          : (this.dataResidencyOptions[0]?.value ?? 'global');
-
-      const current = this.clientForm.get('dataResidency')?.value as string;
-      if (!this.dataResidencyOptions.some((o) => o.value === current)) {
-        this.clientForm.patchValue({ dataResidency: preferred });
+        const current = this.clientForm.get('dataResidency')?.value as string;
+        if (!this.dataResidencyOptions.some((o) => o.value === current)) {
+          this.clientForm.patchValue({ dataResidency: preferred });
+        }
       }
+      this.syncPricingRulesWithEnabledAgents();
     } finally {
       this.isLoadingDataResidencyOptions = false;
     }
@@ -1027,7 +1199,10 @@ export class ClientFormComponent implements OnInit {
 
   private pricingFeatureKeyFromApi(apiFeatureKey: string): string {
     const c = (apiFeatureKey ?? '').trim();
-    return c === 'prompt_builder' ? 'agent_builder' : c;
+    if (c === 'prompt_builder') {
+      return 'agent_builder';
+    }
+    return this.normalizeAgentValue(c) || c;
   }
 
   private applyBillingFromClient(client: ClientRow): void {
@@ -1128,7 +1303,9 @@ export class ClientFormComponent implements OnInit {
         {
           clientName: formValue.clientName,
           dataResidency: formValue.dataResidency,
-          enabledAgents: formValue.enabledAgents
+          enabledAgents: formValue.enabledAgents,
+          voice_concurrency: voiceConcurrency,
+          ...this.buildBillingSettingsBody()
         },
         accessToken
       );
@@ -1287,8 +1464,7 @@ export class ClientFormComponent implements OnInit {
     return null;
   }
 
-  private buildBillingPutBody(clientCode: string): {
-    clientCode: string;
+  private buildBillingSettingsBody(): {
     tier: string;
     allowNegativeBalance: boolean;
     customPricing: Record<
@@ -1352,13 +1528,23 @@ export class ClientFormComponent implements OnInit {
       customPricing[apiFeatureKey][row.unitType] = rule;
     }
     return {
-      clientCode,
       tier: this.billingTier,
       allowNegativeBalance: this.allowNegativeBalance,
       customPricing,
       baseCreditUsage: {
         prompt_builder: this.baseCreditUsagePromptBuilder
       }
+    };
+  }
+
+  private buildBillingPutBody(clientCode: string): ReturnType<
+    ClientFormComponent['buildBillingSettingsBody']
+  > & {
+    clientCode: string;
+  } {
+    return {
+      clientCode,
+      ...this.buildBillingSettingsBody()
     };
   }
 
