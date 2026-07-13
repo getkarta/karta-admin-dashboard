@@ -10,14 +10,21 @@
   <div
     class="client-form-card-toolbar"
     *ngIf="isEditMode && !clientPageViewOnly && !pageEditUnlocked">
-    <button type="button" class="button" (click)="startPageEdit()">Edit</button>
+    <button type="button" class="button" [disabled]="isLoadingVoiceConcurrency" (click)="startPageEdit()">Edit</button>
     <button type="button" class="button" (click)="openAddCreditsModal()">Add credits</button>
   </div>
 
   <section class="card client-form-card">
       <div class="client-form-card__header">
         <h2 class="card__title">Basic information</h2>
-        <span class="client-badge" *ngIf="isEditMode && clientCode">{{ clientCode }}</span>
+        <div class="client-badges" *ngIf="isEditMode && clientCode">
+          <span class="client-badge">{{ clientCode }}</span>
+          <span
+            class="client-badge client-badge--credits"
+            [attr.title]="clientCreditsLoadMessage || 'Available wallet credits'">
+            {{ clientCreditsDisplayLabel }}
+          </span>
+        </div>
       </div>
       <form [formGroup]="clientForm" (ngSubmit)="onClientFormSubmit($event)" class="client-form">
         <ng-template #residencyAndVoiceFields>
@@ -67,22 +74,82 @@
             </small>
           </div>
 
-          <label class="form-group form-group--data-residency">
+          <label
+            class="form-group form-group--data-residency form-group--voice-concurrency"
+            *ngIf="isAgentEnabled('voice')">
             <span class="form-label">Voice concurrency</span>
             <input
               type="number"
               formControlName="voiceConcurrency"
               class="form-input form-input--fit-label"
               min="1"
+              max="1000"
               step="1"
               inputmode="numeric"
               list="voice-concurrency-presets"
-              placeholder="e.g. 5"
-              [disabled]="pageFieldsReadOnly" />
+              placeholder="e.g. 10"
+              [disabled]="pageFieldsReadOnly || isLoadingVoiceConcurrency" />
             <datalist id="voice-concurrency-presets">
               <option *ngFor="let n of voiceConcurrencyOptions" [attr.value]="n"></option>
             </datalist>
+            <small class="field-help" *ngIf="isLoadingVoiceConcurrency">
+              Loading voice concurrency…
+            </small>
+            <small class="field-error" *ngIf="voiceConcurrencyLoadMessage">
+              {{ voiceConcurrencyLoadMessage }}
+            </small>
           </label>
+
+          <div
+            class="form-group form-group--data-residency form-group--voice-stack"
+            *ngIf="isAgentEnabled('voice')">
+            <span class="form-label" id="voice-stack-label">Voice stack</span>
+            <input type="hidden" formControlName="voiceStackId" />
+            <div
+              class="residency-dd voice-stack-dd"
+              [class.residency-dd--open]="voiceStackMenuOpen"
+              #voiceStackDropdownRoot>
+              <button
+                type="button"
+                class="residency-dd__trigger"
+                id="voice-stack-trigger"
+                (click)="toggleVoiceStackMenu($event)"
+                [disabled]="pageFieldsReadOnly || isLoadingVoiceStacks || voiceStackSelectOptions.length === 0"
+                [attr.aria-expanded]="voiceStackMenuOpen"
+                aria-haspopup="listbox"
+                aria-controls="voice-stack-listbox"
+                aria-labelledby="voice-stack-label">
+                <span class="residency-dd__value">{{ voiceStackDisplayLabel || 'Select stack' }}</span>
+                <span class="residency-dd__chevron" aria-hidden="true">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </span>
+              </button>
+              <ul
+                *ngIf="voiceStackMenuOpen"
+                class="residency-dd__list"
+                id="voice-stack-listbox"
+                role="listbox"
+                aria-labelledby="voice-stack-label">
+                <li
+                  *ngFor="let opt of voiceStackSelectOptions"
+                  class="residency-dd__option"
+                  [class.residency-dd__option--selected]="isVoiceStackSelected(opt.value)"
+                  role="option"
+                  [attr.aria-selected]="isVoiceStackSelected(opt.value)"
+                  (click)="selectVoiceStack(opt.value)">
+                  {{ opt.label }}
+                </li>
+              </ul>
+            </div>
+            <small class="field-help" *ngIf="isLoadingVoiceStacks">
+              Loading voice stacks...
+            </small>
+            <small class="field-help" *ngIf="!isLoadingVoiceStacks && effectiveVoiceStackDisplayLabel">
+              Effective stack: {{ effectiveVoiceStackDisplayLabel }}
+            </small>
+          </div>
         </ng-template>
 
         <label class="form-group form-group--client-name">
@@ -152,8 +219,7 @@
             Set billing tier and custom credit-per-unit pricing for this client.
           </p>
           <p class="card__description" *ngIf="!isEditMode">
-            Set billing tier and custom pricing for this client. It is saved with the same billing API when you click
-            Create Client.
+            Optional billing overrides are saved with the client. Leave custom pricing empty to use server defaults.
           </p>
         </div>
 
@@ -221,8 +287,7 @@
           <div class="custom-pricing-block">
             <h3 class="block-title">Custom pricing (credits per unit)</h3>
             <p class="field-help" *ngIf="!pageFieldsReadOnly && !clientPageViewOnly && !isEditMode">
-              Add at least one rule for feature + unit type. Custom pricing is required before you can create the
-              client.
+              Default feature/unit rows come from settings meta. Rows with credits greater than 0 are saved as pricing overrides.
             </p>
             <p class="field-help" *ngIf="!pageFieldsReadOnly && !clientPageViewOnly && isEditMode">
               Add rules for feature + unit type. These are sent as custom pricing on the billing API (no rows means an
@@ -274,7 +339,7 @@
                     role="listbox"
                     aria-label="Feature">
                     <li
-                      *ngFor="let f of FEATURE_CODES"
+                      *ngFor="let f of pricingFeatureOptions"
                       class="residency-dd__option"
                       [class.residency-dd__option--selected]="rule.featureCode === f.value"
                       role="option"
@@ -310,7 +375,7 @@
                     role="listbox"
                     aria-label="Unit type">
                     <li
-                      *ngFor="let u of UNIT_TYPES"
+                      *ngFor="let u of pricingUnitOptionsForRule(rule)"
                       class="residency-dd__option"
                       [class.residency-dd__option--selected]="rule.unitType === u.value"
                       role="option"
@@ -325,9 +390,13 @@
                   [(ngModel)]="rule.creditPerUnit"
                   [ngModelOptions]="{ standalone: true }"
                   class="form-input pricing-rule__control"
+                  [class.form-input--invalid]="pricingRuleHasInvalidCredits(rule)"
+                  [attr.aria-invalid]="pricingRuleHasInvalidCredits(rule) ? 'true' : null"
                   placeholder="Credits"
-                  min="0.01"
+                  min="0"
                   step="0.01"
+                  autocomplete="off"
+                  [attr.name]="'pricing-credit-' + i"
                   [disabled]="pageFieldsReadOnly">
                 <div
                   class="residency-dd pricing-rule-dd"
@@ -398,12 +467,20 @@
                 </button>
               </div>
             </div>
+            <p class="field-error pricing-validation-message" *ngIf="!pageFieldsReadOnly && hasInvalidPricingCredits">
+              Credits must be greater than 0 for each custom pricing rule.
+            </p>
+            <p
+              class="field-error pricing-validation-message"
+              *ngIf="!pageFieldsReadOnly && pricingFeatureOptions.length === 0">
+              Select Chat Agent or Voice Agent before adding custom pricing.
+            </p>
             <button
               type="button"
               class="button button-secondary"
-              *ngIf="!pageFieldsReadOnly"
+              *ngIf="!pageFieldsReadOnly && isEditMode"
               (click)="addPricingRule()"
-              [disabled]="pageFieldsReadOnly">
+              [disabled]="pageFieldsReadOnly || pricingFeatureOptions.length === 0">
               + Add rule
             </button>
           </div>
@@ -415,11 +492,11 @@
             <button
               type="button"
               class="button button-transparent"
-              [disabled]="isSavingEntirePage"
+              [disabled]="isSavingEntirePage || isLoadingVoiceConcurrency"
               (click)="cancelPageEdit()">
               Cancel
             </button>
-            <button type="button" class="button" [disabled]="isSavingEntirePage" (click)="saveEntireEditPage()">
+            <button type="button" class="button" [disabled]="isSavingEntirePage || isLoadingVoiceConcurrency" (click)="saveEntireEditPage()">
               {{ isSavingEntirePage ? 'Saving...' : 'Save' }}
             </button>
           </div>

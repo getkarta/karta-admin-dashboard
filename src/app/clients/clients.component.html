@@ -125,8 +125,8 @@
                 type="button"
                 class="users-count-btn"
                 (click)="goToClientUsers(client)"
-                [attr.aria-label]="'View users for ' + client.clientName + ', ' + userCountFor(client) + ' users'">
-                {{ userCountFor(client) }}
+                [attr.aria-label]="userCountAriaLabelFor(client)">
+                {{ userCountLabelFor(client) }}
               </button>
             </td>
             <td class="client-code">

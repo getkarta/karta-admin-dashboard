@@ -76,6 +76,17 @@
   border-radius: 8px;
 }
 
+.client-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.client-badge--credits {
+  background: $color-bg-light;
+}
+
 // ----- Cards -----
 .card {
   background: $color-white;
@@ -120,7 +131,7 @@
     margin: 0;
   }
 
-  .client-badge {
+  .client-badges {
     margin-top: 0;
   }
 }
@@ -344,6 +355,7 @@
   left: 0;
   right: 0;
   top: calc(100% + 4px);
+  z-index: 1000;
   margin: 0;
   padding: 4px 0;
   list-style: none;
@@ -406,6 +418,10 @@ select.form-input,
   }
 }
 
+.form-input--invalid {
+  border-color: #b42318;
+}
+
 .form-select-multi {
   min-height: 120px;
   padding: 8px;
@@ -418,7 +434,7 @@ select.form-input,
 
 .field-error {
   font-size: 13px;
-  color: $color-primary;
+  color: #b42318;
 }
 
 .field-help {
@@ -550,6 +566,10 @@ select.form-input,
   overflow-x: auto;
   overflow-y: visible;
   -webkit-overflow-scrolling: touch;
+
+  &:has(.residency-dd--open) {
+    overflow: visible;
+  }
 }
 
 /* View-only: no Remove column — 6-column grid */
@@ -613,6 +633,10 @@ select.form-input,
 .custom-pricing-block > .button-secondary {
   align-self: flex-start;
   margin-top: 4px;
+}
+
+.pricing-validation-message {
+  margin: -2px 0 0;
 }
 
 .pricing-form > .message {

@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 
 import { ApiService } from '../services/api.service';
@@ -25,6 +25,8 @@ export interface ClientRow {
   voiceConcurrency?: number;
   /** Optional; from list API when provided. */
   userCount?: number;
+  /** Optional current/remaining credit balance when the API includes it. */
+  creditBalance?: number;
 }
 
 @Component({
@@ -55,8 +57,7 @@ export class ClientsComponent implements OnInit {
   private pendingListRouteFlash = '';
   constructor(
     private api: ApiService,
-    private router: Router,
-    private cdr: ChangeDetectorRef
+    private router: Router
   ) {
     const nav = this.router.getCurrentNavigation();
     const flash = nav?.extras?.state?.['listFlashMessage'];
@@ -107,12 +108,19 @@ export class ClientsComponent implements OnInit {
     return client.status !== 'Archived';
   }
 
-  userCountFor(client: ClientRow): number {
+  userCountLabelFor(client: ClientRow): string {
     const n = client.userCount;
     if (typeof n === 'number' && Number.isFinite(n) && n >= 0) {
-      return Math.floor(n);
+      return String(Math.floor(n));
     }
-    return 0;
+    return '—';
+  }
+
+  userCountAriaLabelFor(client: ClientRow): string {
+    const count = this.userCountLabelFor(client);
+    return count === '—'
+      ? `View users for ${client.clientName}`
+      : `View users for ${client.clientName}, ${count} users`;
   }
 
   /** Full-page User information (directory-style list + add user). */
@@ -362,7 +370,6 @@ export class ClientsComponent implements OnInit {
       const rows = this.extractClientRows(response);
       this.clients = this.mergeApiRowsWithLocallyArchived(rows);
       this.clampPageIndex();
-      await this.hydrateUserCountsFromApi();
       if (this.pendingListRouteFlash) {
         this.actionMessage = this.pendingListRouteFlash;
         this.pendingListRouteFlash = '';
@@ -486,16 +493,156 @@ export class ClientsComponent implements OnInit {
 
     return list.map((client: any) => ({
       clientName: client?.clientName || client?.name || 'Unnamed Client',
-      clientCode: client?.clientCode || 'N/A',
-      enabledAgents: Array.isArray(client?.enabledAgents) ? client.enabledAgents : [],
+      clientCode:
+        client?.clientID || client?.clientId || client?.clientCode || 'N/A',
+      enabledAgents: this.extractEnabledAgents(client),
       status: this.normalizeStatus(client),
       owner: client?.owner || client?.createdBy || client?.email || 'Admin',
       createdOn: this.formatDate(client?.createdAt || client?.updatedAt),
       billing: client?.billing ?? client?.bi,
       dataResidency: this.extractDataResidency(client),
       voiceConcurrency: this.extractVoiceConcurrency(client),
-      userCount: this.extractUserCount(client)
+      userCount: this.extractUserCount(client),
+      creditBalance: this.extractCreditBalance(client)
     }));
+  }
+
+  private extractCreditBalance(client: any): number | undefined {
+    const read = (src: any): number | undefined => {
+      if (!src || typeof src !== 'object') {
+        return undefined;
+      }
+      const keys = [
+        'creditBalance',
+        'credit_balance',
+        'creditsBalance',
+        'credits_balance',
+        'remainingCredits',
+        'remaining_credits',
+        'availableCredits',
+        'available_credits',
+        'remaining',
+        'balance',
+        'credits'
+      ];
+      for (const key of keys) {
+        const raw = src[key];
+        const normalized = typeof raw === 'string' ? raw.trim() : raw;
+        const n = typeof normalized === 'number' ? normalized : Number(normalized);
+        if (
+          normalized !== undefined &&
+          normalized !== null &&
+          normalized !== '' &&
+          Number.isFinite(n)
+        ) {
+          return n;
+        }
+      }
+      return undefined;
+    };
+
+    return (
+      read(client) ??
+      read(client?.billing) ??
+      read(client?.bi) ??
+      read(client?.credits)
+    );
+  }
+
+  private extractEnabledAgents(client: any): string[] {
+    const raw =
+      client?.enabledAgents ??
+      client?.enabled_agents ??
+      client?.agents ??
+      client?.agentTypes ??
+      client?.agent_types;
+    return this.normalizeEnabledAgents(raw);
+  }
+
+  private normalizeEnabledAgents(value: unknown): string[] {
+    const known = new Set(['chat', 'voice', 'onboarding', 'audit']);
+    const out: string[] = [];
+    const add = (raw: unknown) => {
+      const normalized = this.normalizeAgentValue(raw);
+      if (normalized && known.has(normalized) && !out.includes(normalized)) {
+        out.push(normalized);
+      }
+    };
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        add(item);
+      }
+      return out;
+    }
+
+    if (typeof value === 'string') {
+      for (const item of value.split(',')) {
+        add(item);
+      }
+      return out;
+    }
+
+    if (value && typeof value === 'object') {
+      for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+        if (typeof entry === 'boolean') {
+          if (entry) add(key);
+          continue;
+        }
+        if (typeof entry === 'string' || typeof entry === 'number') {
+          add(entry);
+          continue;
+        }
+        if (Array.isArray(entry)) {
+          for (const item of entry) add(item);
+          continue;
+        }
+        if (entry && typeof entry === 'object') {
+          const enabled =
+            (entry as { enabled?: unknown; active?: unknown }).enabled ??
+            (entry as { enabled?: unknown; active?: unknown }).active;
+          if (enabled !== false) add(key);
+        }
+      }
+    }
+
+    return out;
+  }
+
+  private normalizeAgentValue(value: unknown): string {
+    if (value && typeof value === 'object') {
+      const obj = value as Record<string, unknown>;
+      value =
+        obj['value'] ??
+        obj['type'] ??
+        obj['code'] ??
+        obj['name'] ??
+        obj['agent'] ??
+        obj['agentType'] ??
+        obj['agent_type'];
+    }
+    const raw = String(value ?? '').trim().toLowerCase();
+    if (!raw) {
+      return '';
+    }
+    const compact = raw
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/\bagents?\b/g, '')
+      .trim();
+    if (compact === 'chat' || compact === 'text') {
+      return 'chat';
+    }
+    if (compact === 'voice' || compact === 'call' || compact === 'calls') {
+      return 'voice';
+    }
+    if (compact === 'onboarding' || compact === 'kyc') {
+      return 'onboarding';
+    }
+    if (compact === 'audit' || compact === 'qa' || compact === 'quality') {
+      return 'audit';
+    }
+    return raw;
   }
 
   private extractDataResidency(client: any): string | undefined {
@@ -522,61 +669,10 @@ export class ClientsComponent implements OnInit {
     return undefined;
   }
 
-  /**
-   * List clients often omits user counts — fetch `GET …/clients/:code/users` per client
-   * (batched) so the Users column shows real totals.
-   */
-  private async hydrateUserCountsFromApi(): Promise<void> {
-    const token = localStorage.getItem('accessToken');
-    if (!token || !this.clients.length) {
-      return;
-    }
-
-    const codes = [
-      ...new Set(
-        this.clients
-          .map((c) => (c.clientCode || '').trim())
-          .filter((c) => c && c !== 'N/A')
-      )
-    ];
-    if (!codes.length) {
-      return;
-    }
-
-    const counts = new Map<string, number>();
-    const batchSize = 8;
-
-    for (let i = 0; i < codes.length; i += batchSize) {
-      const slice = codes.slice(i, i + batchSize);
-      await Promise.all(
-        slice.map(async (code) => {
-          try {
-            const res = await this.api.getClientUsers(code, token);
-            counts.set(code, Array.isArray(res.users) ? res.users.length : 0);
-          } catch {
-            // keep list-derived count if any; otherwise unchanged
-          }
-        })
-      );
-    }
-
-    if (!counts.size) {
-      return;
-    }
-
-    this.clients = this.clients.map((row) => {
-      const code = (row.clientCode || '').trim();
-      if (code && counts.has(code)) {
-        return { ...row, userCount: counts.get(code)! };
-      }
-      return row;
-    });
-  }
-
   private extractVoiceConcurrency(client: any): number | undefined {
     const v = client?.voiceConcurrency ?? client?.voice_concurrency;
     const n = Number(v);
-    if (Number.isFinite(n) && Number.isInteger(n) && n >= 1) {
+    if (Number.isFinite(n) && Number.isInteger(n) && n >= 0) {
       return n;
     }
     return undefined;
@@ -605,7 +701,7 @@ export class ClientsComponent implements OnInit {
       return 'Archived';
     }
 
-    if (rawStatus === 'draft' || client?.enabledAgents?.length === 0) {
+    if (rawStatus === 'draft' || this.extractEnabledAgents(client).length === 0) {
       return 'Draft';
     }
 
