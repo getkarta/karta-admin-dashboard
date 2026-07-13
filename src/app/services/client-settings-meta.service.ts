@@ -21,6 +21,8 @@ export interface FeatureUnitTypeOption {
 export interface ClientSettingsMeta {
   dataResidencyOptions: DataResidencyOption[];
   featureUnitTypeOptions: FeatureUnitTypeOption[];
+  defaultFeatureUnitTypeOptions: FeatureUnitTypeOption[];
+  unitTypeOptions: FeatureUnitTypeOption[];
   defaultDataResidency?: string;
 }
 
@@ -39,7 +41,9 @@ export class ClientSettingsMetaService {
     if (!token) {
       return {
         dataResidencyOptions: [...DEFAULT_DATA_RESIDENCY_OPTIONS],
-        featureUnitTypeOptions: []
+        featureUnitTypeOptions: [],
+        defaultFeatureUnitTypeOptions: [],
+        unitTypeOptions: []
       };
     }
 
@@ -49,7 +53,9 @@ export class ClientSettingsMetaService {
     } catch {
       return {
         dataResidencyOptions: [...DEFAULT_DATA_RESIDENCY_OPTIONS],
-        featureUnitTypeOptions: []
+        featureUnitTypeOptions: [],
+        defaultFeatureUnitTypeOptions: [],
+        unitTypeOptions: []
       };
     }
   }
@@ -59,16 +65,35 @@ function normalizeClientSettingsMeta(body: unknown): ClientSettingsMeta {
   const defaultDataResidency = readDefaultDataResidency(body);
   const dataResidencyOptions = readDataResidencyOptions(body);
   const featureUnitTypeOptions = readFeatureUnitTypeOptions(body);
+  const defaultFeatureUnitTypeOptionsFromMeta =
+    readDefaultFeatureUnitTypeOptionsFromMeta(body);
+  const unitTypeOptionsFromMeta = readUnitTypeOptionsFromMeta(body);
+  const defaultFeatureUnitTypeOptions =
+    defaultFeatureUnitTypeOptionsFromMeta.length > 0
+      ? defaultFeatureUnitTypeOptionsFromMeta
+      : featureUnitTypeOptions;
+  const unitTypeOptions =
+    unitTypeOptionsFromMeta.length > 0
+      ? unitTypeOptionsFromMeta
+      : featureUnitTypeOptions;
 
   if (dataResidencyOptions.length === 0) {
     return {
       dataResidencyOptions: [...DEFAULT_DATA_RESIDENCY_OPTIONS],
       featureUnitTypeOptions,
+      defaultFeatureUnitTypeOptions,
+      unitTypeOptions,
       defaultDataResidency
     };
   }
 
-  return { dataResidencyOptions, featureUnitTypeOptions, defaultDataResidency };
+  return {
+    dataResidencyOptions,
+    featureUnitTypeOptions,
+    defaultFeatureUnitTypeOptions,
+    unitTypeOptions,
+    defaultDataResidency
+  };
 }
 
 function readDefaultDataResidency(body: unknown): string | undefined {
@@ -150,29 +175,52 @@ function normalizeOptionArray(raw: unknown): DataResidencyOption[] {
 }
 
 function readFeatureUnitTypeOptions(body: unknown): FeatureUnitTypeOption[] {
+  return readFeatureUnitTypeOptionsFromKeys(body, [
+    'featureUnitTypeOptions',
+    'featureUnitTypes',
+    'unitTypeOptionsByFeature'
+  ]);
+}
+
+function readDefaultFeatureUnitTypeOptionsFromMeta(
+  body: unknown
+): FeatureUnitTypeOption[] {
+  return readFeatureUnitTypeOptionsFromKeys(body, [
+    'defaultFeatureUnitTypeOptions',
+    'defaultFeatureUnitTypes',
+    'defaultUnitTypeOptions',
+    'defaultUnitTypes'
+  ]);
+}
+
+function readUnitTypeOptionsFromMeta(body: unknown): FeatureUnitTypeOption[] {
+  return readFeatureUnitTypeOptionsFromKeys(body, [
+    'unitTypeOptions',
+    'unitTypes',
+    'unitTypeOptionsByFeature'
+  ]);
+}
+
+function readFeatureUnitTypeOptionsFromKeys(
+  body: unknown,
+  keys: string[]
+): FeatureUnitTypeOption[] {
   if (!body || typeof body !== 'object') return [];
 
   const o = body as Record<string, unknown>;
   const nested = o['data'] ?? o['result'];
   if (nested && typeof nested === 'object' && nested !== o) {
-    const fromNested = readFeatureUnitTypeOptions(nested);
+    const fromNested = readFeatureUnitTypeOptionsFromKeys(nested, keys);
     if (fromNested.length > 0) return fromNested;
   }
 
-  const candidates: unknown[] = [
-    o['featureUnitTypeOptions'],
-    o['featureUnitTypes'],
-    o['unitTypeOptionsByFeature'],
-    (o['billing'] as Record<string, unknown> | undefined)?.[
-      'featureUnitTypeOptions'
-    ],
-    (o['settings'] as Record<string, unknown> | undefined)?.[
-      'featureUnitTypeOptions'
-    ],
-    (o['meta'] as Record<string, unknown> | undefined)?.[
-      'featureUnitTypeOptions'
-    ]
-  ];
+  const candidates: unknown[] = [...keys.map((key) => o[key])];
+  for (const containerKey of ['billing', 'settings', 'meta', 'options']) {
+    const container = o[containerKey];
+    if (!container || typeof container !== 'object') continue;
+    const containerRecord = container as Record<string, unknown>;
+    candidates.push(...keys.map((key) => containerRecord[key]));
+  }
 
   for (const c of candidates) {
     const normalized = normalizeFeatureUnitTypeOptions(c);

@@ -11,6 +11,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { ClientRow } from '../clients/clients.component';
 import {
   ClientSettingsMetaService,
+  ClientSettingsMeta,
   DEFAULT_DATA_RESIDENCY_OPTIONS,
   DataResidencyOption,
   FeatureUnitTypeOption
@@ -166,6 +167,8 @@ export class ClientFormComponent implements OnInit {
     ...DEFAULT_DATA_RESIDENCY_OPTIONS
   ];
   featureUnitTypeOptions: FeatureUnitTypeOption[] = [];
+  defaultFeatureUnitTypeOptions: FeatureUnitTypeOption[] = [];
+  unitTypeOptions: FeatureUnitTypeOption[] = [];
   isLoadingDataResidencyOptions = false;
 
   /** Suggested values for the voice concurrency number field (datalist). */
@@ -617,7 +620,7 @@ export class ClientFormComponent implements OnInit {
       allowed.includes(f.value)
     );
     const metaFeatureCodes = new Set(
-      this.featureUnitTypeOptions
+      this.unitTypeOptionsForPricingDropdown()
         .map((o) => this.pricingFeatureKeyFromApi(o.featureCode))
         .filter((value) => value.trim())
     );
@@ -744,7 +747,10 @@ export class ClientFormComponent implements OnInit {
   private pricingUnitOptionsForFeature(
     featureCode: string
   ): Array<{ value: string; label: string }> {
-    const featureOptions = this.featureUnitOptionsForFeature(featureCode);
+    const featureOptions = this.featureUnitOptionsForFeature(
+      featureCode,
+      this.unitTypeOptionsForPricingDropdown()
+    );
     if (featureOptions.length === 0) {
       return this.UNIT_TYPES;
     }
@@ -761,13 +767,14 @@ export class ClientFormComponent implements OnInit {
   }
 
   private featureUnitOptionsForFeature(
-    featureCode: string
+    featureCode: string,
+    source: FeatureUnitTypeOption[]
   ): FeatureUnitTypeOption[] {
     const normalizedFeatureCode = this.pricingFeatureKeyFromApi(featureCode);
     const seen = new Set<string>();
     const out: FeatureUnitTypeOption[] = [];
 
-    for (const option of this.featureUnitTypeOptions) {
+    for (const option of source) {
       const optionFeatureCode = this.pricingFeatureKeyFromApi(
         option.featureCode
       );
@@ -790,12 +797,14 @@ export class ClientFormComponent implements OnInit {
     return out;
   }
 
-  private featureUnitOptionsForSelectedAgents(): FeatureUnitTypeOption[] {
+  private featureUnitOptionsForSelectedAgents(
+    source: FeatureUnitTypeOption[]
+  ): FeatureUnitTypeOption[] {
     const allowed = new Set(this.allowedPricingFeatureCodes());
     const seen = new Set<string>();
     const out: FeatureUnitTypeOption[] = [];
 
-    for (const option of this.featureUnitTypeOptions) {
+    for (const option of source) {
       const featureCode = this.pricingFeatureKeyFromApi(option.featureCode);
       const unitType = String(option.unitType ?? '').trim();
       if (!allowed.has(featureCode) || !unitType) {
@@ -816,14 +825,31 @@ export class ClientFormComponent implements OnInit {
     return out;
   }
 
+  private unitTypeOptionsForPricingDropdown(): FeatureUnitTypeOption[] {
+    return this.unitTypeOptions.length > 0
+      ? this.unitTypeOptions
+      : this.featureUnitTypeOptions;
+  }
+
+  private defaultFeatureUnitTypeOptionsForCreate(): FeatureUnitTypeOption[] {
+    return this.defaultFeatureUnitTypeOptions.length > 0
+      ? this.defaultFeatureUnitTypeOptions
+      : this.featureUnitTypeOptions;
+  }
+
+  private defaultFeatureUnitOptionsForSelectedAgents(): FeatureUnitTypeOption[] {
+    return this.featureUnitOptionsForSelectedAgents(
+      this.defaultFeatureUnitTypeOptionsForCreate()
+    );
+  }
+
   private hasFeatureUnitTypeOptionsForSelectedAgents(): boolean {
-    return this.featureUnitOptionsForSelectedAgents().length > 0;
+    return this.defaultFeatureUnitOptionsForSelectedAgents().length > 0;
   }
 
   private defaultPricingRulesForCreate(): PricingRule[] {
-    const rulesFromMeta = this.featureUnitOptionsForSelectedAgents().map(
-      (option) => this.createPricingRuleFromFeatureUnitOption(option)
-    );
+    const rulesFromMeta = this.defaultFeatureUnitOptionsForSelectedAgents()
+      .map((option) => this.createPricingRuleFromFeatureUnitOption(option));
     if (rulesFromMeta.length > 0) {
       return rulesFromMeta;
     }
@@ -1391,15 +1417,27 @@ export class ClientFormComponent implements OnInit {
     this.isLoadingDataResidencyOptions = true;
     try {
       const meta = await this.clientSettingsMeta.fetchMeta();
-      this.dataResidencyOptions =
-        meta.dataResidencyOptions.length > 0
-          ? meta.dataResidencyOptions
-          : [...DEFAULT_DATA_RESIDENCY_OPTIONS];
-      this.featureUnitTypeOptions = meta.featureUnitTypeOptions ?? [];
+      this.applyClientSettingsMeta(meta);
       this.syncPricingRulesWithEnabledAgents();
     } finally {
       this.isLoadingDataResidencyOptions = false;
     }
+  }
+
+  private applyClientSettingsMeta(meta: ClientSettingsMeta): void {
+    this.dataResidencyOptions =
+      meta.dataResidencyOptions.length > 0
+        ? meta.dataResidencyOptions
+        : [...DEFAULT_DATA_RESIDENCY_OPTIONS];
+    this.featureUnitTypeOptions = meta.featureUnitTypeOptions ?? [];
+    this.defaultFeatureUnitTypeOptions =
+      (meta.defaultFeatureUnitTypeOptions?.length ?? 0) > 0
+        ? meta.defaultFeatureUnitTypeOptions
+        : this.featureUnitTypeOptions;
+    this.unitTypeOptions =
+      (meta.unitTypeOptions?.length ?? 0) > 0
+        ? meta.unitTypeOptions
+        : this.featureUnitTypeOptions;
   }
 
   private syncDataResidencyWithOptions(): void {
@@ -1436,11 +1474,7 @@ export class ClientFormComponent implements OnInit {
     this.isLoadingDataResidencyOptions = true;
     try {
       const meta = await this.clientSettingsMeta.fetchMeta();
-      this.dataResidencyOptions =
-        meta.dataResidencyOptions.length > 0
-          ? meta.dataResidencyOptions
-          : [...DEFAULT_DATA_RESIDENCY_OPTIONS];
-      this.featureUnitTypeOptions = meta.featureUnitTypeOptions ?? [];
+      this.applyClientSettingsMeta(meta);
 
       const globalOption = this.dataResidencyOptions.find(
         (o) => o.value.toLowerCase() === 'global'

@@ -25,7 +25,20 @@ describe('ClientFormComponent', () => {
           useValue: {
             fetchMeta: async () => ({
               dataResidencyOptions: [{ value: 'GLOBAL', label: 'Global' }],
-              featureUnitTypeOptions: [
+              featureUnitTypeOptions: [],
+              defaultFeatureUnitTypeOptions: [
+                {
+                  featureCode: 'chat',
+                  unitType: 'ai_resolved_session',
+                  unitLabel: 'AI resolved session'
+                },
+                {
+                  featureCode: 'voice',
+                  unitType: 'sip_seconds_outbound_call',
+                  unitLabel: 'SIP seconds outbound'
+                }
+              ],
+              unitTypeOptions: [
                 {
                   featureCode: 'chat',
                   unitType: 'ai_resolved_session',
@@ -86,7 +99,7 @@ describe('ClientFormComponent', () => {
     ).toBeNull();
   });
 
-  it('should populate create pricing rows from settings meta feature unit options', async () => {
+  it('should populate create pricing rows from settings meta default feature unit options', async () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -98,7 +111,7 @@ describe('ClientFormComponent', () => {
     ).toEqual([{ featureCode: 'chat', unitType: 'ai_resolved_session' }]);
   });
 
-  it('should add voice pricing rows from settings meta when voice is enabled', async () => {
+  it('should add voice pricing rows from settings meta default options when voice is enabled', async () => {
     await fixture.whenStable();
     component.clientForm.patchValue({ enabledAgents: ['chat', 'voice'] });
     (component as any).syncPricingRulesWithEnabledAgents();
@@ -111,10 +124,22 @@ describe('ClientFormComponent', () => {
       }))
     ).toEqual([
       { featureCode: 'chat', unitType: 'ai_resolved_session' },
-      { featureCode: 'voice', unitType: 'sip_seconds_inbound_call' },
-      { featureCode: 'voice', unitType: 'sip_seconds_outbound_call' },
-      { featureCode: 'voice', unitType: 'web_seconds_inbound_call' },
-      { featureCode: 'voice', unitType: 'web_seconds_outbound_call' }
+      { featureCode: 'voice', unitType: 'sip_seconds_outbound_call' }
+    ]);
+  });
+
+  it('should use settings meta unit type options for the add-rule unit dropdown', async () => {
+    await fixture.whenStable();
+
+    expect(
+      (component as any)
+        .pricingUnitOptionsForFeature('voice')
+        .map((option: { value: string }) => option.value)
+    ).toEqual([
+      'sip_seconds_inbound_call',
+      'sip_seconds_outbound_call',
+      'web_seconds_inbound_call',
+      'web_seconds_outbound_call'
     ]);
   });
 
