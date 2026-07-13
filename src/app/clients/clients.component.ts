@@ -493,7 +493,8 @@ export class ClientsComponent implements OnInit {
 
     return list.map((client: any) => ({
       clientName: client?.clientName || client?.name || 'Unnamed Client',
-      clientCode: client?.clientCode || 'N/A',
+      clientCode:
+        client?.clientID || client?.clientId || client?.clientCode || 'N/A',
       enabledAgents: this.extractEnabledAgents(client),
       status: this.normalizeStatus(client),
       owner: client?.owner || client?.createdBy || client?.email || 'Admin',

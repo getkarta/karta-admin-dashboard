@@ -15,7 +15,12 @@ import {
   DataResidencyOption,
   FeatureUnitTypeOption
 } from '../services/client-settings-meta.service';
-import { ApiService } from '../services/api.service';
+import {
+  ApiService,
+  VoiceClientConfigPatchRequest,
+  VoiceClientConfigResponse,
+  VoiceStack
+} from '../services/api.service';
 
 type PricingRule = {
   featureCode: string;
@@ -24,6 +29,11 @@ type PricingRule = {
   rounding: string;
   intervalSeconds?: number;
   minimumSeconds?: number;
+};
+
+type VoiceStackSelectOption = {
+  value: string;
+  label: string;
 };
 
 @Component({
@@ -63,6 +73,7 @@ export class ClientFormComponent implements OnInit {
     enabledAgents: string[];
     dataResidency: string;
     voiceConcurrency: number;
+    voiceStackId: string;
     billingTier: string;
     allowNegativeBalance: boolean;
     baseCreditUsagePromptBuilder: boolean;
@@ -76,6 +87,16 @@ export class ClientFormComponent implements OnInit {
   isSubmitting = false;
   isLoadingVoiceConcurrency = false;
   voiceConcurrencyLoadMessage = '';
+  @ViewChild('voiceStackDropdownRoot')
+  voiceStackDropdownRoot?: ElementRef<HTMLElement>;
+  voiceStackMenuOpen = false;
+  voiceStacks: VoiceStack[] = [];
+  isLoadingVoiceStacks = false;
+  effectiveVoiceStackId = '';
+  private voiceConfigSnapshot: {
+    maxConcurrentDials: number;
+    voiceStackId: string | null;
+  } | null = null;
   clientCredits: number | null = null;
 
   // Pricing: PUT /admin/billing/billing — body: clientCode, tier, allowNegativeBalance, customPricing, baseCreditUsage
@@ -146,7 +167,7 @@ export class ClientFormComponent implements OnInit {
   isLoadingDataResidencyOptions = false;
 
   /** Suggested values for the voice concurrency number field (datalist). */
-  readonly voiceConcurrencyOptions = [0, 1, 2, 5, 10, 25, 50, 100] as const;
+  readonly voiceConcurrencyOptions = [1, 2, 5, 10, 25, 50, 100] as const;
 
   clientForm: FormGroup;
 
@@ -186,12 +207,14 @@ export class ClientFormComponent implements OnInit {
     }
     this.clientForm = this.fb.group({
       clientName: ['', [Validators.required, Validators.minLength(3)]],
-      dataResidency: this.fb.nonNullable.control<string>('global'),
-      voiceConcurrency: this.fb.nonNullable.control<number>(0, [
+      dataResidency: this.fb.nonNullable.control<string>('GLOBAL'),
+      voiceConcurrency: this.fb.nonNullable.control<number>(10, [
         Validators.required,
-        Validators.min(0)
+        Validators.min(1),
+        Validators.max(1000)
       ]),
-      enabledAgents: this.fb.nonNullable.control<string[]>(['voice'])
+      voiceStackId: this.fb.nonNullable.control<string>(''),
+      enabledAgents: this.fb.nonNullable.control<string[]>(['chat'])
     });
   }
 
@@ -215,6 +238,11 @@ export class ClientFormComponent implements OnInit {
     if (this.dataResidencyMenuOpen) {
       if (!this.residencyDropdownRoot?.nativeElement?.contains(t)) {
         this.dataResidencyMenuOpen = false;
+      }
+    }
+    if (this.voiceStackMenuOpen) {
+      if (!this.voiceStackDropdownRoot?.nativeElement?.contains(t)) {
+        this.voiceStackMenuOpen = false;
       }
     }
     const el = ev.target as HTMLElement;
@@ -244,6 +272,7 @@ export class ClientFormComponent implements OnInit {
       return;
     }
     this.dataResidencyMenuOpen = false;
+    this.voiceStackMenuOpen = false;
     this.billingTierMenuOpen = false;
     this.pricingDd = null;
   }
@@ -262,6 +291,70 @@ export class ClientFormComponent implements OnInit {
 
   isDataResidencySelected(value: string): boolean {
     return this.clientForm.get('dataResidency')?.value === value;
+  }
+
+  get voiceStackSelectOptions(): VoiceStackSelectOption[] {
+    const out: VoiceStackSelectOption[] = [];
+    const defaultStack = this.defaultVoiceStack();
+
+    if (this.isEditMode) {
+      out.push({
+        value: '',
+        label: defaultStack ? `Default (${defaultStack.id})` : 'Default'
+      });
+    }
+
+    for (const stack of this.voiceStacks) {
+      const id = String(stack.id ?? '').trim();
+      if (!id) continue;
+      const parts = [id];
+      if (stack.environment) parts.push(stack.environment);
+      if (stack.isDefault) parts.push('default');
+      out.push({
+        value: id,
+        label: parts.join(' - ')
+      });
+    }
+
+    return out;
+  }
+
+  get voiceStackDisplayLabel(): string {
+    const value = this.voiceStackFormValue();
+    return (
+      this.voiceStackSelectOptions.find((o) => o.value === value)?.label ??
+      value ??
+      ''
+    );
+  }
+
+  get effectiveVoiceStackDisplayLabel(): string {
+    if (!this.isEditMode) {
+      return this.voiceStackFormValue() || this.defaultVoiceStack()?.id || '';
+    }
+    return this.effectiveVoiceStackId || this.defaultVoiceStack()?.id || '';
+  }
+
+  toggleVoiceStackMenu(ev: MouseEvent): void {
+    ev.stopPropagation();
+    if (
+      this.pageFieldsReadOnly ||
+      this.isLoadingVoiceStacks ||
+      this.voiceStackSelectOptions.length === 0
+    ) {
+      return;
+    }
+    this.voiceStackMenuOpen = !this.voiceStackMenuOpen;
+  }
+
+  selectVoiceStack(value: string): void {
+    if (this.pageFieldsReadOnly) return;
+    this.clientForm.patchValue({ voiceStackId: value });
+    this.voiceStackMenuOpen = false;
+  }
+
+  isVoiceStackSelected(value: string): boolean {
+    return this.voiceStackFormValue() === value;
   }
 
   get billingTierDisplayLabel(): string {
@@ -378,6 +471,22 @@ export class ClientFormComponent implements OnInit {
       if (i >= 0) current.splice(i, 1);
     }
     ctrl?.patchValue(current);
+    if (agentValue === 'voice') {
+      if (checked) {
+        this.ensureVoiceDefaultsForSelectedAgent();
+        if (this.voiceStacks.length === 0 && !this.isLoadingVoiceStacks) {
+          void this.loadVoiceStackOptions(
+            this.isEditMode ? this.clientCode : 'new'
+          );
+        }
+        if (this.isEditMode && !this.voiceConfigSnapshot) {
+          void this.loadVoiceConfigForCurrentClient();
+        }
+      } else {
+        this.voiceStackMenuOpen = false;
+        this.clientForm.patchValue({ voiceConcurrency: 10 });
+      }
+    }
     this.syncPricingRulesWithEnabledAgents();
   }
 
@@ -392,7 +501,7 @@ export class ClientFormComponent implements OnInit {
 
     if (!code) {
       this.ensureCreatePricingDefaults();
-      void this.loadDataResidencyOptions();
+      void this.loadCreateFormMeta();
       return;
     }
 
@@ -432,7 +541,8 @@ export class ClientFormComponent implements OnInit {
     }
     // List rows can be partial or stale; always reload the full client before showing/editing.
     await this.loadClientByCode();
-    await this.loadVoiceConcurrencyForCurrentClient();
+    await this.loadVoiceStackOptions(this.clientCode);
+    await this.loadVoiceConfigForCurrentClient();
   }
 
   private applyDirectoryViewOnlyMode(): void {
@@ -443,6 +553,7 @@ export class ClientFormComponent implements OnInit {
     this.editPageCancelSnapshot = null;
     this.clientForm.disable({ emitEvent: false });
     this.dataResidencyMenuOpen = false;
+    this.voiceStackMenuOpen = false;
     this.billingTierMenuOpen = false;
     this.pricingDd = null;
   }
@@ -452,6 +563,46 @@ export class ClientFormComponent implements OnInit {
       return;
     }
     this.syncPricingRulesWithEnabledAgents();
+  }
+
+  private async loadCreateFormMeta(): Promise<void> {
+    await Promise.all([
+      this.loadDataResidencyOptions(),
+      this.loadVoiceStackOptions('new')
+    ]);
+    this.ensureVoiceDefaultsForSelectedAgent();
+  }
+
+  private voiceStackFormValue(): string {
+    const raw = this.clientForm.get('voiceStackId')?.value;
+    return typeof raw === 'string' ? raw.trim() : String(raw ?? '').trim();
+  }
+
+  private defaultVoiceStack(): VoiceStack | undefined {
+    return (
+      this.voiceStacks.find((stack) => stack.isDefault === true) ??
+      this.voiceStacks[0]
+    );
+  }
+
+  private ensureVoiceDefaultsForSelectedAgent(): void {
+    if (!this.isAgentEnabled('voice')) {
+      return;
+    }
+
+    const currentConcurrency = this.parseVoiceConcurrency(
+      this.clientForm.get('voiceConcurrency')?.value
+    );
+    if (currentConcurrency === null) {
+      this.clientForm.patchValue({ voiceConcurrency: 10 });
+    }
+
+    if (!this.isEditMode && !this.voiceStackFormValue()) {
+      const defaultStackId = this.defaultVoiceStack()?.id?.trim();
+      if (defaultStackId) {
+        this.clientForm.patchValue({ voiceStackId: defaultStackId });
+      }
+    }
   }
 
   get pricingFeatureOptions(): Array<{ value: string; label: string }> {
@@ -483,8 +634,27 @@ export class ClientFormComponent implements OnInit {
   }
 
   pricingRuleHasInvalidCredits(rule: { creditPerUnit: unknown }): boolean {
+    if (!this.isEditMode && !this.clientPageViewOnly) {
+      return this.pricingRuleHasInvalidCreateCredits(rule);
+    }
     const creditPerUnit = Number(rule.creditPerUnit);
     return !Number.isFinite(creditPerUnit) || creditPerUnit <= 0;
+  }
+
+  private pricingRuleHasInvalidCreateCredits(rule: {
+    creditPerUnit: unknown;
+  }): boolean {
+    const raw = rule.creditPerUnit;
+    if (raw === undefined || raw === null || raw === '') {
+      return false;
+    }
+    const creditPerUnit = Number(raw);
+    return !Number.isFinite(creditPerUnit) || creditPerUnit < 0;
+  }
+
+  private pricingRuleIsBillable(rule: { creditPerUnit: unknown }): boolean {
+    const creditPerUnit = Number(rule.creditPerUnit);
+    return Number.isFinite(creditPerUnit) && creditPerUnit > 0;
   }
 
   private allowedPricingFeatureCodes(): string[] {
@@ -702,9 +872,9 @@ export class ClientFormComponent implements OnInit {
     return this.clientPageViewOnly || (this.isEditMode && !this.pageEditUnlocked);
   }
 
-  /** Create Client requires at least one custom pricing row. */
+  /** Billing overrides are optional during create; server defaults are used when empty. */
   get isCreateClientBlockedByPricing(): boolean {
-    return !this.isEditMode && !this.clientPageViewOnly && this.pricingRules.length === 0;
+    return false;
   }
 
   get clientFormPageDescription(): string {
@@ -716,14 +886,21 @@ export class ClientFormComponent implements OnInit {
         ? 'You are editing this client. Use Save under Pricing & Billing to apply client details and pricing together, or Cancel to discard changes.'
         : 'Review client details and pricing. Click Edit above Basic information to make changes, then use Save and Cancel under Pricing & Billing to apply or discard edits together.';
     }
-    return 'Create a new client record. Add at least one custom pricing rule under Pricing & Billing (required); billing is saved when you create the client.';
+    return 'Create a new client record. Voice configuration and optional billing overrides are saved with the create request.';
   }
 
   private pickResidencyAndVoiceFromUnknown(
     src: Record<string, unknown>
-  ): Partial<{ dataResidency: string; voiceConcurrency: number }> {
-    const out: Partial<{ dataResidency: string; voiceConcurrency: number }> =
-      {};
+  ): Partial<{
+    dataResidency: string;
+    voiceConcurrency: number;
+    voiceStackId: string;
+  }> {
+    const out: Partial<{
+      dataResidency: string;
+      voiceConcurrency: number;
+      voiceStackId: string;
+    }> = {};
     const dr = src['dataResidency'] ?? src['data_residency'];
     if (typeof dr === 'string' && dr.trim()) {
       out.dataResidency = dr.trim();
@@ -732,6 +909,10 @@ export class ClientFormComponent implements OnInit {
     const n = this.parseVoiceConcurrency(vc);
     if (n !== null) {
       out.voiceConcurrency = n;
+    }
+    const voiceStackId = src['voiceStackId'] ?? src['voice_stack_id'];
+    if (typeof voiceStackId === 'string' && voiceStackId.trim()) {
+      out.voiceStackId = voiceStackId.trim();
     }
     return out;
   }
@@ -930,14 +1111,14 @@ export class ClientFormComponent implements OnInit {
       return null;
     }
     const n = typeof value === 'number' ? value : Number(value);
-    if (Number.isFinite(n) && Number.isInteger(n) && n >= 0) {
+    if (Number.isFinite(n) && Number.isInteger(n) && n >= 1 && n <= 1000) {
       return n;
     }
     return null;
   }
 
   private shortClientIdForVoice(clientCode: string): string {
-    return String(clientCode ?? '').trim().split('_')[0]?.trim() ?? '';
+    return String(clientCode ?? '').trim();
   }
 
   private describeApiError(error: unknown): string {
@@ -963,8 +1144,13 @@ export class ClientFormComponent implements OnInit {
     return 'Unknown error';
   }
 
-  private async loadVoiceConcurrencyForCurrentClient(): Promise<void> {
+  private async loadVoiceConfigForCurrentClient(): Promise<void> {
     if (!this.isEditMode || !this.clientCode?.trim()) {
+      return;
+    }
+    if (!this.isAgentEnabled('voice')) {
+      this.voiceConfigSnapshot = null;
+      this.effectiveVoiceStackId = this.defaultVoiceStack()?.id ?? '';
       return;
     }
     const accessToken = localStorage.getItem('accessToken');
@@ -974,49 +1160,190 @@ export class ClientFormComponent implements OnInit {
     }
     const voiceClientId = this.shortClientIdForVoice(this.clientCode);
     if (!voiceClientId || voiceClientId === 'N/A') {
-      this.voiceConcurrencyLoadMessage = 'Missing client code for voice concurrency.';
+      this.voiceConcurrencyLoadMessage = 'Missing client code for voice config.';
       return;
     }
 
     this.isLoadingVoiceConcurrency = true;
     this.voiceConcurrencyLoadMessage = '';
     try {
-      const res = await this.api.getClientVoiceConcurrency(
+      const res = await this.api.getClientVoiceConfig(
         voiceClientId,
         accessToken
       );
-      const n = this.parseVoiceConcurrency(res?.maxConcurrentDials);
-      if (n === null) {
-        this.voiceConcurrencyLoadMessage =
-          'Voice concurrency response did not include a valid value.';
+      this.applyVoiceConfigResponse(res);
+    } catch (error) {
+      if (error instanceof HttpErrorResponse && error.status === 404) {
+        this.voiceConfigSnapshot = null;
+        this.effectiveVoiceStackId = this.defaultVoiceStack()?.id ?? '';
+        this.ensureVoiceDefaultsForSelectedAgent();
         return;
       }
-      this.clientForm.patchValue({ voiceConcurrency: n });
-    } catch (error) {
-      console.error('Failed to load voice concurrency', error);
+      console.error('Failed to load voice config', error);
       this.voiceConcurrencyLoadMessage =
-        `Could not load voice concurrency (${this.describeApiError(error)}).`;
+        `Could not load voice config (${this.describeApiError(error)}).`;
     } finally {
       this.isLoadingVoiceConcurrency = false;
     }
   }
 
-  private async putVoiceConcurrencyForClient(
+  private async saveVoiceConfigForClient(
     clientCode: string,
     maxConcurrentDials: number,
+    voiceStackIdValue: string,
     accessToken: string
-  ): Promise<number> {
+  ): Promise<VoiceClientConfigResponse | null> {
     const voiceClientId = this.shortClientIdForVoice(clientCode);
     if (!voiceClientId || voiceClientId === 'N/A') {
-      throw new Error('Missing client code for voice concurrency.');
+      throw new Error('Missing client code for voice config.');
     }
-    const res = await this.api.putClientVoiceConcurrency(
+    const voiceStackId = this.voiceStackIdForConfigApi(voiceStackIdValue);
+
+    if (!this.voiceConfigSnapshot) {
+      const body = {
+        maxConcurrentDials,
+        ...(voiceStackId === null ? {} : { voiceStackId })
+      };
+      const res = await this.api.postClientVoiceConfig(
+        voiceClientId,
+        body,
+        accessToken
+      );
+      this.applyVoiceConfigResponse(res);
+      return res;
+    }
+
+    const patch: VoiceClientConfigPatchRequest = {};
+    if (maxConcurrentDials !== this.voiceConfigSnapshot.maxConcurrentDials) {
+      patch.maxConcurrentDials = maxConcurrentDials;
+    }
+    if (voiceStackId !== this.voiceConfigSnapshot.voiceStackId) {
+      patch.voiceStackId = voiceStackId;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return null;
+    }
+
+    const res = await this.api.patchClientVoiceConfig(
       voiceClientId,
-      maxConcurrentDials,
+      patch,
       accessToken
     );
-    const returnedValue = this.parseVoiceConcurrency(res?.maxConcurrentDials);
-    return returnedValue ?? maxConcurrentDials;
+    this.applyVoiceConfigResponse(res);
+    return res;
+  }
+
+  private voiceStackIdForConfigApi(value: string): string | null {
+    const trimmed = String(value ?? '').trim();
+    return trimmed ? trimmed : null;
+  }
+
+  private applyVoiceConfigResponse(res: VoiceClientConfigResponse): void {
+    const n = this.parseVoiceConcurrency(res?.maxConcurrentDials);
+    if (n === null) {
+      this.voiceConcurrencyLoadMessage =
+        'Voice config response did not include a valid concurrency value.';
+      return;
+    }
+    const explicitStack =
+      typeof res.voiceStackId === 'string' && res.voiceStackId.trim()
+        ? res.voiceStackId.trim()
+        : null;
+    this.voiceConfigSnapshot = {
+      maxConcurrentDials: n,
+      voiceStackId: explicitStack
+    };
+    this.effectiveVoiceStackId =
+      typeof res.effectiveVoiceStackId === 'string'
+        ? res.effectiveVoiceStackId.trim()
+        : '';
+    this.clientForm.patchValue({
+      voiceConcurrency: n,
+      voiceStackId: explicitStack ?? ''
+    });
+    this.voiceConcurrencyLoadMessage = '';
+  }
+
+  private formatTelephonyMigrationMessage(migration: unknown): string {
+    if (!migration || typeof migration !== 'object') {
+      return '';
+    }
+    const m = migration as Record<string, unknown>;
+    const migrated = this.parseFiniteNumber(m['migrated']);
+    const failed = this.parseFiniteNumber(m['failed']);
+    const parts: string[] = [];
+    if (migrated !== null) parts.push(`${migrated} migrated`);
+    if (failed !== null) parts.push(`${failed} failed`);
+    const errors = m['errors'];
+    if (Array.isArray(errors) && errors.length > 0) {
+      parts.push(`${errors.length} error${errors.length === 1 ? '' : 's'}`);
+    }
+    return parts.length ? `Telephony migration: ${parts.join(', ')}.` : '';
+  }
+
+  private restoreVoiceConfigFormFromSnapshot(): void {
+    const snapshot = this.voiceConfigSnapshot;
+    if (!snapshot) {
+      this.ensureVoiceDefaultsForSelectedAgent();
+      return;
+    }
+    this.clientForm.patchValue({
+      voiceConcurrency: snapshot.maxConcurrentDials,
+      voiceStackId: snapshot.voiceStackId ?? ''
+    });
+  }
+
+  private async loadVoiceStackOptions(clientCode: string): Promise<void> {
+    const accessToken = localStorage.getItem('accessToken');
+    if (!accessToken) {
+      return;
+    }
+
+    const pathClientCode = String(clientCode || 'new').trim() || 'new';
+    this.isLoadingVoiceStacks = true;
+    try {
+      const res = await this.api.getClientVoiceConfigMeta(
+        pathClientCode,
+        accessToken
+      );
+      this.voiceStacks = this.normalizeVoiceStacks(res?.voiceStacks);
+      this.ensureVoiceDefaultsForSelectedAgent();
+    } catch (error) {
+      console.error('Failed to load voice stack meta', error);
+      this.voiceStacks = [];
+      if (this.isAgentEnabled('voice')) {
+        this.voiceConcurrencyLoadMessage =
+          `Could not load voice stacks (${this.describeApiError(error)}).`;
+      }
+    } finally {
+      this.isLoadingVoiceStacks = false;
+    }
+  }
+
+  private normalizeVoiceStacks(raw: unknown): VoiceStack[] {
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+
+    const seen = new Set<string>();
+    const out: VoiceStack[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== 'object') continue;
+      const r = item as Record<string, unknown>;
+      const id = typeof r['id'] === 'string' ? r['id'].trim() : '';
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const stack: VoiceStack = { id };
+      if (typeof r['environment'] === 'string' && r['environment'].trim()) {
+        stack.environment = r['environment'].trim();
+      }
+      if (typeof r['isDefault'] === 'boolean') {
+        stack.isDefault = r['isDefault'];
+      }
+      out.push(stack);
+    }
+    return out;
   }
 
   private async hydrateResidencyOptionsOnly(): Promise<void> {
@@ -1042,7 +1369,7 @@ export class ClientFormComponent implements OnInit {
           (o) => o.value.toLowerCase() === 'global'
         )?.value ??
         this.dataResidencyOptions[0]?.value ??
-        'global';
+        'GLOBAL';
       this.clientForm.patchValue({ dataResidency: preferred });
     }
   }
@@ -1086,7 +1413,7 @@ export class ClientFormComponent implements OnInit {
             (o) => o.value === meta.defaultDataResidency
           )
             ? meta.defaultDataResidency
-            : (this.dataResidencyOptions[0]?.value ?? 'global');
+            : (this.dataResidencyOptions[0]?.value ?? 'GLOBAL');
 
         const current = this.clientForm.get('dataResidency')?.value as string;
         if (!this.dataResidencyOptions.some((o) => o.value === current)) {
@@ -1124,7 +1451,8 @@ export class ClientFormComponent implements OnInit {
         [];
       const client: ClientRow = {
         clientName: raw.clientName ?? raw.name ?? 'Unnamed Client',
-        clientCode: raw.clientCode ?? raw.cod ?? this.clientCode,
+        clientCode:
+          raw.clientID ?? raw.clientId ?? raw.clientCode ?? raw.cod ?? this.clientCode,
         enabledAgents:
           loadedEnabledAgents.length > 0
             ? loadedEnabledAgents
@@ -1165,6 +1493,8 @@ export class ClientFormComponent implements OnInit {
         (typeof raw['name'] === 'string' && raw['name'].trim()) ||
         fallback.clientName,
       clientCode:
+        (typeof raw['clientID'] === 'string' && raw['clientID'].trim()) ||
+        (typeof raw['clientId'] === 'string' && raw['clientId'].trim()) ||
         (typeof raw['clientCode'] === 'string' && raw['clientCode'].trim()) ||
         (typeof raw['cod'] === 'string' && raw['cod'].trim()) ||
         fallbackCode,
@@ -1247,6 +1577,92 @@ export class ClientFormComponent implements OnInit {
     this.syncPricingRulesWithEnabledAgents();
   }
 
+  private isVoiceEnabledInAgents(enabledAgents: unknown): boolean {
+    return this.normalizeEnabledAgents(enabledAgents).includes('voice');
+  }
+
+  private validateVoiceFields(
+    formValue: {
+      enabledAgents?: string[];
+      voiceConcurrency?: unknown;
+      voiceStackId?: unknown;
+    },
+    requireExplicitStack: boolean
+  ): string | null {
+    if (!this.isVoiceEnabledInAgents(formValue.enabledAgents)) {
+      return null;
+    }
+
+    const concurrency = this.parseVoiceConcurrency(formValue.voiceConcurrency);
+    if (concurrency === null) {
+      return 'voiceConcurrency must be an integer between 1 and 1000.';
+    }
+
+    if (this.isLoadingVoiceStacks) {
+      return 'Wait for voice stack options to finish loading before saving.';
+    }
+
+    if (this.voiceStacks.length === 0) {
+      return 'Voice stack options could not be loaded.';
+    }
+
+    const voiceStackId =
+      typeof formValue.voiceStackId === 'string'
+        ? formValue.voiceStackId.trim()
+        : String(formValue.voiceStackId ?? '').trim();
+    if (requireExplicitStack && !voiceStackId) {
+      return 'voiceStackId is required when voice is enabled.';
+    }
+
+    if (
+      voiceStackId &&
+      !this.voiceStacks.some((stack) => stack.id === voiceStackId)
+    ) {
+      return 'Select a valid voice stack.';
+    }
+
+    return null;
+  }
+
+  private buildCreateClientBody(formValue: {
+    clientName: string;
+    dataResidency: string;
+    enabledAgents: string[];
+    voiceConcurrency: unknown;
+    voiceStackId: unknown;
+  }): Parameters<ApiService['createClient']>[0] {
+    const body: Parameters<ApiService['createClient']>[0] = {
+      clientName: formValue.clientName,
+      dataResidency: formValue.dataResidency,
+      enabledAgents: formValue.enabledAgents,
+      ...this.buildCreateBillingSettingsBody()
+    };
+
+    if (this.isVoiceEnabledInAgents(formValue.enabledAgents)) {
+      const voiceConcurrency =
+        this.parseVoiceConcurrency(formValue.voiceConcurrency) ?? 10;
+      const voiceStackId = String(formValue.voiceStackId ?? '').trim();
+      body.voiceConcurrency = voiceConcurrency;
+      body.voiceStackId = voiceStackId;
+    }
+
+    return body;
+  }
+
+  private buildCreateBillingSettingsBody(): Partial<
+    ReturnType<ClientFormComponent['buildBillingSettingsBody']>
+  > {
+    const billing = this.buildBillingSettingsBody(true);
+    const hasCustomPricing = Object.keys(billing.customPricing).length > 0;
+    const hasBillingOverride =
+      hasCustomPricing ||
+      this.billingTier !== 'enterprise' ||
+      this.allowNegativeBalance !== true ||
+      this.baseCreditUsagePromptBuilder !== false;
+
+    return hasBillingOverride ? billing : {};
+  }
+
   async onSubmit(): Promise<void> {
     if (this.clientPageViewOnly || this.isEditMode) {
       return;
@@ -1268,45 +1684,30 @@ export class ClientFormComponent implements OnInit {
 
     const formValue = this.clientForm.getRawValue();
 
-    const voiceConcurrency = Number(formValue.voiceConcurrency);
-    if (
-      !Number.isFinite(voiceConcurrency) ||
-      !Number.isInteger(voiceConcurrency) ||
-      voiceConcurrency < 0
-    ) {
-      this.errorMessage = 'Voice concurrency must be a whole number of 0 or more.';
-      this.isSubmitting = false;
-      return;
-    }
-
     if (!formValue.enabledAgents || formValue.enabledAgents.length === 0) {
       this.errorMessage = 'Select at least one enabled agent before creating.';
       this.isSubmitting = false;
       return;
     }
 
-    if (this.pricingRules.length === 0) {
-      this.errorMessage =
-        'Add at least one custom pricing rule under Pricing & Billing before creating the client.';
+    const voiceErr = this.validateVoiceFields(formValue, true);
+    if (voiceErr) {
+      this.errorMessage = voiceErr;
       this.isSubmitting = false;
       return;
     }
 
     try {
-      const pricingErr = this.validatePricingRulesForBilling();
+      const pricingErr = this.validatePricingRulesForBilling({
+        ignoreUnpricedRules: true
+      });
       if (pricingErr) {
         this.pricingErrorMessage = pricingErr;
         return;
       }
 
       const createRes = await this.api.createClient(
-        {
-          clientName: formValue.clientName,
-          dataResidency: formValue.dataResidency,
-          enabledAgents: formValue.enabledAgents,
-          voice_concurrency: voiceConcurrency,
-          ...this.buildBillingSettingsBody()
-        },
+        this.buildCreateClientBody(formValue),
         accessToken
       );
 
@@ -1315,12 +1716,14 @@ export class ClientFormComponent implements OnInit {
         await this.router.navigate(['/clients'], {
           state: {
             listFlashMessage:
-              'Client was created, but the server did not return a client code, so voice concurrency and pricing were not saved. Open the client from the list and use Edit to save them.'
+              'Client was created, but the server did not return a client code. Open the client from the list to review it.'
           }
         });
         return;
       }
 
+      const voiceConcurrency =
+        this.parseVoiceConcurrency(formValue.voiceConcurrency) ?? undefined;
       let createdClientSnapshot: ClientRow = {
         clientName: formValue.clientName,
         clientCode: newCode,
@@ -1340,67 +1743,13 @@ export class ClientFormComponent implements OnInit {
         console.error('Created client reload failed', loadErr);
       }
 
-      let savedVoiceConcurrency = voiceConcurrency;
-      let concurrencyError = '';
-      try {
-        savedVoiceConcurrency = await this.putVoiceConcurrencyForClient(
-          newCode,
-          voiceConcurrency,
-          accessToken
-        );
-      } catch (concurrencyErr) {
-        console.error(concurrencyErr);
-        concurrencyError = this.describeApiError(concurrencyErr);
-      }
-
-      let billingError = '';
-      try {
-        await this.putBillingBilling(
-          this.buildBillingPutBody(newCode),
-          accessToken
-        );
-      } catch (billingErr) {
-        console.error(billingErr);
-        billingError = this.describeApiError(billingErr);
-      }
-
-      if (concurrencyError || billingError) {
-        await this.router.navigate(
-          ['/clients', newCode, 'edit'],
-          {
-            state: {
-              client: {
-                ...createdClientSnapshot,
-                voiceConcurrency: savedVoiceConcurrency
-              } as ClientRow,
-              ...(concurrencyError
-                ? {
-                    flashClientError:
-                      `Client was created, but saving voice concurrency failed (${concurrencyError}). Click Edit, then Save to retry.`
-                  }
-                : {}),
-              ...(billingError
-                ? {
-                    flashPricingError:
-                      `Client was created, but saving pricing failed (${billingError}). Open the client, click Edit, then Save to set billing.`
-                  }
-                : {})
-            }
-          }
-        );
-        return;
-      }
-
       await this.router.navigate(
         ['/clients', newCode, 'edit'],
         {
           state: {
-            client: {
-              ...createdClientSnapshot,
-              voiceConcurrency: savedVoiceConcurrency
-            } as ClientRow,
+            client: createdClientSnapshot,
             flashSuccessMessage:
-              'Client created successfully. Voice concurrency, pricing, and billing were saved. You can add credits from this page.'
+              'Client created successfully. Voice configuration and billing settings were saved with the client.'
           }
         }
       );
@@ -1448,8 +1797,16 @@ export class ClientFormComponent implements OnInit {
   }
 
   /** Same payload shape as `PUT …/billing/billing` for create + edit flows. */
-  private validatePricingRulesForBilling(): string | null {
+  private validatePricingRulesForBilling(options?: {
+    ignoreUnpricedRules?: boolean;
+  }): string | null {
     for (const row of this.pricingRules) {
+      if (options?.ignoreUnpricedRules && !this.pricingRuleIsBillable(row)) {
+        if (this.pricingRuleHasInvalidCreateCredits(row)) {
+          return `Credits must be 0 or greater for ${row.featureCode} / ${row.unitType}.`;
+        }
+        continue;
+      }
       if (!row.featureCode?.trim() || !row.unitType?.trim()) {
         return 'Feature and unit type are required for each rule.';
       }
@@ -1464,7 +1821,7 @@ export class ClientFormComponent implements OnInit {
     return null;
   }
 
-  private buildBillingSettingsBody(): {
+  private buildBillingSettingsBody(onlyBillablePricingRules = false): {
     tier: string;
     allowNegativeBalance: boolean;
     customPricing: Record<
@@ -1496,6 +1853,9 @@ export class ClientFormComponent implements OnInit {
       >
     > = {};
     for (const row of this.pricingRules) {
+      if (onlyBillablePricingRules && !this.pricingRuleIsBillable(row)) {
+        continue;
+      }
       const creditPerUnit = Number(row.creditPerUnit);
       const apiFeatureKey = this.pricingFeatureKeyForApi(row.featureCode);
       if (!customPricing[apiFeatureKey]) customPricing[apiFeatureKey] = {};
@@ -1556,9 +1916,16 @@ export class ClientFormComponent implements OnInit {
     const client = r['client'] as Record<string, unknown> | undefined;
     const fromNested =
       client && typeof client === 'object'
-        ? (client['clientCode'] ?? client['cod'] ?? client['code'])
+        ? (
+            client['clientID'] ??
+            client['clientId'] ??
+            client['clientCode'] ??
+            client['cod'] ??
+            client['code']
+          )
         : undefined;
-    const direct = r['clientCode'] ?? r['cod'] ?? r['code'];
+    const direct =
+      r['clientID'] ?? r['clientId'] ?? r['clientCode'] ?? r['cod'] ?? r['code'];
     const raw = (fromNested ?? direct) as unknown;
     const s = typeof raw === 'string' ? raw.trim() : String(raw ?? '').trim();
     return s && s !== 'undefined' ? s : null;
@@ -1625,6 +1992,7 @@ export class ClientFormComponent implements OnInit {
       enabledAgents: [...((raw.enabledAgents as string[]) ?? [])],
       dataResidency: String(raw.dataResidency ?? ''),
       voiceConcurrency: Number(raw.voiceConcurrency),
+      voiceStackId: this.voiceStackFormValue(),
       billingTier: this.billingTier,
       allowNegativeBalance: this.allowNegativeBalance,
       baseCreditUsagePromptBuilder: this.baseCreditUsagePromptBuilder,
@@ -1641,7 +2009,8 @@ export class ClientFormComponent implements OnInit {
       clientName: s.clientName,
       enabledAgents: s.enabledAgents,
       dataResidency: s.dataResidency,
-      voiceConcurrency: s.voiceConcurrency
+      voiceConcurrency: s.voiceConcurrency,
+      voiceStackId: s.voiceStackId
     });
     this.billingTier = s.billingTier;
     this.allowNegativeBalance = s.allowNegativeBalance;
@@ -1816,7 +2185,7 @@ export class ClientFormComponent implements OnInit {
       return;
     }
     if (this.isLoadingVoiceConcurrency) {
-      this.errorMessage = 'Wait for voice concurrency to finish loading before editing.';
+      this.errorMessage = 'Wait for voice config to finish loading before editing.';
       return;
     }
     this.captureEditPageSnapshot();
@@ -1826,6 +2195,7 @@ export class ClientFormComponent implements OnInit {
     this.pricingErrorMessage = '';
     this.pricingSuccessMessage = '';
     this.dataResidencyMenuOpen = false;
+    this.voiceStackMenuOpen = false;
     this.billingTierMenuOpen = false;
     this.pricingDd = null;
   }
@@ -1841,6 +2211,7 @@ export class ClientFormComponent implements OnInit {
     this.pricingErrorMessage = '';
     this.pricingSuccessMessage = '';
     this.dataResidencyMenuOpen = false;
+    this.voiceStackMenuOpen = false;
     this.billingTierMenuOpen = false;
     this.pricingDd = null;
   }
@@ -1866,13 +2237,9 @@ export class ClientFormComponent implements OnInit {
       return;
     }
 
-    const voiceConcurrency = Number(formValue.voiceConcurrency);
-    if (
-      !Number.isFinite(voiceConcurrency) ||
-      !Number.isInteger(voiceConcurrency) ||
-      voiceConcurrency < 0
-    ) {
-      this.errorMessage = 'Voice concurrency must be a whole number of 0 or more.';
+    const voiceErr = this.validateVoiceFields(formValue, false);
+    if (voiceErr) {
+      this.errorMessage = voiceErr;
       return;
     }
 
@@ -1899,13 +2266,18 @@ export class ClientFormComponent implements OnInit {
         accessToken
       );
 
-      const savedVoiceConcurrency = await this.putVoiceConcurrencyForClient(
-        this.clientCode,
-        voiceConcurrency,
-        accessToken
-      );
-      this.clientForm.patchValue({ voiceConcurrency: savedVoiceConcurrency });
-      this.voiceConcurrencyLoadMessage = '';
+      let voiceConfigRes: VoiceClientConfigResponse | null = null;
+      if (this.isVoiceEnabledInAgents(formValue.enabledAgents)) {
+        const voiceConcurrency =
+          this.parseVoiceConcurrency(formValue.voiceConcurrency) ?? 10;
+        voiceConfigRes = await this.saveVoiceConfigForClient(
+          this.clientCode,
+          voiceConcurrency,
+          String(formValue.voiceStackId ?? ''),
+          accessToken
+        );
+        this.voiceConcurrencyLoadMessage = '';
+      }
 
       const billingRes = await this.putBillingBilling(
         this.buildBillingPutBody(this.clientCode.trim()),
@@ -1921,13 +2293,22 @@ export class ClientFormComponent implements OnInit {
       this.pageEditUnlocked = false;
       this.editPageCancelSnapshot = null;
       this.successMessage =
-        'Client, voice concurrency, and pricing saved successfully.';
+        'Client, voice configuration, and pricing saved successfully.';
+      const migrationMessage = this.formatTelephonyMigrationMessage(
+        voiceConfigRes?.telephonyMigration
+      );
+      if (migrationMessage) {
+        this.successMessage = `${this.successMessage} ${migrationMessage}`;
+      }
       const billingMsg = billingRes?.message?.trim();
       if (billingMsg) {
         this.pricingSuccessMessage = billingMsg;
       }
     } catch (error) {
       console.error(error);
+      if (error instanceof HttpErrorResponse && error.status === 409) {
+        this.restoreVoiceConfigFormFromSnapshot();
+      }
       const msg =
         error instanceof HttpErrorResponse
           ? (typeof error.error?.message === 'string'

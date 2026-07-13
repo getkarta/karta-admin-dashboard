@@ -47,9 +47,32 @@ export interface PostBillingCreditsResponse {
   idempotencyKey?: string;
 }
 
-export interface VoiceConcurrencyResponse {
+export interface VoiceStack {
+  id: string;
+  environment?: string;
+  isDefault?: boolean;
+}
+
+export interface VoiceClientConfigMetaResponse {
+  voiceStacks: VoiceStack[];
+}
+
+export interface VoiceClientConfigResponse {
   client_id: string;
   maxConcurrentDials: number;
+  voiceStackId: string | null;
+  effectiveVoiceStackId: string;
+  telephonyMigration: unknown | null;
+}
+
+export interface VoiceClientConfigCreateRequest {
+  maxConcurrentDials: number;
+  voiceStackId?: string | null;
+}
+
+export interface VoiceClientConfigPatchRequest {
+  maxConcurrentDials?: number;
+  voiceStackId?: string | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -85,9 +108,11 @@ export class ApiService {
     return new HttpHeaders(headers);
   }
 
-  private createVoiceConcurrencyRequestId(action: 'read' | 'update'): string {
+  private createVoiceConfigRequestId(
+    action: 'meta' | 'read' | 'create' | 'update'
+  ): string {
     const random = Math.random().toString(36).slice(2, 10);
-    return `admin-concurrency-${action}-${Date.now().toString(36)}-${random}`;
+    return `admin-voice-config-${action}-${Date.now().toString(36)}-${random}`;
   }
 
   postLogin(email: string, password: string): Promise<LoginResponse> {
@@ -212,10 +237,11 @@ export class ApiService {
       clientName: string;
       dataResidency: string;
       enabledAgents: string[];
-      voice_concurrency: number;
-      tier: string;
-      allowNegativeBalance: boolean;
-      customPricing: Record<
+      voiceConcurrency?: number;
+      voiceStackId?: string;
+      tier?: string;
+      allowNegativeBalance?: boolean;
+      customPricing?: Record<
         string,
         Record<
           string,
@@ -228,7 +254,7 @@ export class ApiService {
           }
         >
       >;
-      baseCreditUsage: { prompt_builder: boolean };
+      baseCreditUsage?: Record<string, boolean>;
     },
     accessToken: string
   ): Promise<unknown> {
@@ -257,40 +283,81 @@ export class ApiService {
     );
   }
 
-  /** GET …/v1/voice/clients/:clientId/concurrency */
-  getClientVoiceConcurrency(
-    clientId: string,
+  /** GET …/v1/voice/clients/:clientCode/config/meta */
+  getClientVoiceConfigMeta(
+    clientCode: string,
     accessToken: string
-  ): Promise<VoiceConcurrencyResponse> {
-    const enc = encodeURIComponent(clientId);
+  ): Promise<VoiceClientConfigMetaResponse> {
+    const enc = encodeURIComponent(clientCode);
     return firstValueFrom(
-      this.http.get<VoiceConcurrencyResponse>(
-        `${this.apiBase}/v1/voice/clients/${enc}/concurrency`,
+      this.http.get<VoiceClientConfigMetaResponse>(
+        `${this.apiBase}/v1/voice/clients/${enc}/config/meta`,
         {
           headers: this.voiceAdminHeaders(
             accessToken,
-            this.createVoiceConcurrencyRequestId('read')
+            this.createVoiceConfigRequestId('meta')
           )
         }
       )
     );
   }
 
-  /** PUT …/v1/voice/clients/:clientId/concurrency */
-  putClientVoiceConcurrency(
-    clientId: string,
-    maxConcurrentDials: number,
+  /** GET …/v1/voice/clients/:clientCode/config */
+  getClientVoiceConfig(
+    clientCode: string,
     accessToken: string
-  ): Promise<VoiceConcurrencyResponse> {
-    const enc = encodeURIComponent(clientId);
+  ): Promise<VoiceClientConfigResponse> {
+    const enc = encodeURIComponent(clientCode);
     return firstValueFrom(
-      this.http.put<VoiceConcurrencyResponse>(
-        `${this.apiBase}/v1/voice/clients/${enc}/concurrency`,
-        { maxConcurrentDials },
+      this.http.get<VoiceClientConfigResponse>(
+        `${this.apiBase}/v1/voice/clients/${enc}/config`,
         {
           headers: this.voiceAdminHeaders(
             accessToken,
-            this.createVoiceConcurrencyRequestId('update'),
+            this.createVoiceConfigRequestId('read')
+          )
+        }
+      )
+    );
+  }
+
+  /** POST …/v1/voice/clients/:clientCode/config */
+  postClientVoiceConfig(
+    clientCode: string,
+    body: VoiceClientConfigCreateRequest,
+    accessToken: string
+  ): Promise<VoiceClientConfigResponse> {
+    const enc = encodeURIComponent(clientCode);
+    return firstValueFrom(
+      this.http.post<VoiceClientConfigResponse>(
+        `${this.apiBase}/v1/voice/clients/${enc}/config`,
+        body,
+        {
+          headers: this.voiceAdminHeaders(
+            accessToken,
+            this.createVoiceConfigRequestId('create'),
+            true
+          )
+        }
+      )
+    );
+  }
+
+  /** PATCH …/v1/voice/clients/:clientCode/config */
+  patchClientVoiceConfig(
+    clientCode: string,
+    body: VoiceClientConfigPatchRequest,
+    accessToken: string
+  ): Promise<VoiceClientConfigResponse> {
+    const enc = encodeURIComponent(clientCode);
+    return firstValueFrom(
+      this.http.patch<VoiceClientConfigResponse>(
+        `${this.apiBase}/v1/voice/clients/${enc}/config`,
+        body,
+        {
+          headers: this.voiceAdminHeaders(
+            accessToken,
+            this.createVoiceConfigRequestId('update'),
             true
           )
         }

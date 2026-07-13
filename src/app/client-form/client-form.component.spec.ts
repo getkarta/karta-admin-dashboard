@@ -24,22 +24,32 @@ describe('ClientFormComponent', () => {
           provide: ClientSettingsMetaService,
           useValue: {
             fetchMeta: async () => ({
-              dataResidencyOptions: [{ value: 'global', label: 'Global' }],
+              dataResidencyOptions: [{ value: 'GLOBAL', label: 'Global' }],
               featureUnitTypeOptions: [
                 {
                   featureCode: 'chat',
-                  unitType: 'message',
-                  unitLabel: 'Message'
-                },
-                {
-                  featureCode: 'chat',
-                  unitType: 'token',
-                  unitLabel: 'Token'
+                  unitType: 'ai_resolved_session',
+                  unitLabel: 'AI resolved session'
                 },
                 {
                   featureCode: 'voice',
-                  unitType: 'minute',
-                  unitLabel: 'Minute'
+                  unitType: 'sip_seconds_inbound_call',
+                  unitLabel: 'SIP seconds inbound'
+                },
+                {
+                  featureCode: 'voice',
+                  unitType: 'sip_seconds_outbound_call',
+                  unitLabel: 'SIP seconds outbound'
+                },
+                {
+                  featureCode: 'voice',
+                  unitType: 'web_seconds_inbound_call',
+                  unitLabel: 'Web seconds inbound'
+                },
+                {
+                  featureCode: 'voice',
+                  unitType: 'web_seconds_outbound_call',
+                  unitLabel: 'Web seconds outbound'
                 }
               ]
             })
@@ -57,24 +67,26 @@ describe('ClientFormComponent', () => {
     expect(component).toBeTruthy();
   });
 
-  it('should default voice concurrency to zero', () => {
-    expect(component.clientForm.get('voiceConcurrency')?.value).toBe(0);
+  it('should default voice concurrency to ten', () => {
+    expect(component.clientForm.get('voiceConcurrency')?.value).toBe(10);
   });
 
-  it('should select voice agent by default', () => {
-    expect(component.clientForm.get('enabledAgents')?.value).toEqual(['voice']);
+  it('should select chat agent by default', () => {
+    expect(component.clientForm.get('enabledAgents')?.value).toEqual(['chat']);
   });
 
-  it('should hide voice concurrency when only chat is selected', () => {
-    component.clientForm.patchValue({ enabledAgents: ['chat'] });
+  it('should hide voice settings when only chat is selected', () => {
     fixture.detectChanges();
 
     expect(
       fixture.nativeElement.querySelector('.form-group--voice-concurrency')
     ).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('.form-group--voice-stack')
+    ).toBeNull();
   });
 
-  it('should create pricing rows from settings meta feature unit options', async () => {
+  it('should populate create pricing rows from settings meta feature unit options', async () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -83,7 +95,51 @@ describe('ClientFormComponent', () => {
         featureCode: rule.featureCode,
         unitType: rule.unitType
       }))
-    ).toEqual([{ featureCode: 'voice', unitType: 'minute' }]);
+    ).toEqual([{ featureCode: 'chat', unitType: 'ai_resolved_session' }]);
+  });
+
+  it('should add voice pricing rows from settings meta when voice is enabled', async () => {
+    await fixture.whenStable();
+    component.clientForm.patchValue({ enabledAgents: ['chat', 'voice'] });
+    (component as any).syncPricingRulesWithEnabledAgents();
+    fixture.detectChanges();
+
+    expect(
+      component.pricingRules.map((rule) => ({
+        featureCode: rule.featureCode,
+        unitType: rule.unitType
+      }))
+    ).toEqual([
+      { featureCode: 'chat', unitType: 'ai_resolved_session' },
+      { featureCode: 'voice', unitType: 'sip_seconds_inbound_call' },
+      { featureCode: 'voice', unitType: 'sip_seconds_outbound_call' },
+      { featureCode: 'voice', unitType: 'web_seconds_inbound_call' },
+      { featureCode: 'voice', unitType: 'web_seconds_outbound_call' }
+    ]);
+  });
+
+  it('should build create payload with camelCase voice config fields and omit unpriced default rules', async () => {
+    await fixture.whenStable();
+    component.clientForm.patchValue({
+      clientName: 'Acme Corp',
+      dataResidency: 'IN',
+      enabledAgents: ['chat', 'voice'],
+      voiceConcurrency: 10,
+      voiceStackId: 'staging_current'
+    });
+    (component as any).syncPricingRulesWithEnabledAgents();
+
+    expect(
+      (component as any).buildCreateClientBody(
+        component.clientForm.getRawValue()
+      )
+    ).toEqual({
+      clientName: 'Acme Corp',
+      dataResidency: 'IN',
+      enabledAgents: ['chat', 'voice'],
+      voiceConcurrency: 10,
+      voiceStackId: 'staging_current'
+    });
   });
 
   it('should build billing custom pricing payload in billing API format', () => {

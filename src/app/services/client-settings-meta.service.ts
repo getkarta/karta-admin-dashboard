@@ -25,8 +25,8 @@ export interface ClientSettingsMeta {
 }
 
 export const DEFAULT_DATA_RESIDENCY_OPTIONS: DataResidencyOption[] = [
-  { value: 'global', label: 'Global' },
-  { value: 'IN', label: 'IN' }
+  { value: 'IN', label: 'IN' },
+  { value: 'GLOBAL', label: 'Global' }
 ];
 
 /** GET `{apiUrl}/clients/settings-meta` (e.g. …/admin/clients/settings-meta). */
