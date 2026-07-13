@@ -47,6 +47,11 @@ export interface PostBillingCreditsResponse {
   idempotencyKey?: string;
 }
 
+export interface ClientBillingBalanceResponse {
+  clientCode: string;
+  availableCredits: number;
+}
+
 export interface VoiceStack {
   id: string;
   environment?: string;
@@ -113,6 +118,11 @@ export class ApiService {
   ): string {
     const random = Math.random().toString(36).slice(2, 10);
     return `admin-voice-config-${action}-${Date.now().toString(36)}-${random}`;
+  }
+
+  private createClientBalanceRequestId(): string {
+    const random = Math.random().toString(36).slice(2, 10);
+    return `admin-client-balance-${Date.now().toString(36)}-${random}`;
   }
 
   postLogin(email: string, password: string): Promise<LoginResponse> {
@@ -389,6 +399,25 @@ export class ApiService {
         `${this.apiBase}/billing/credits`,
         body,
         { headers: this.jsonAuthHeaders(accessToken) }
+      )
+    );
+  }
+
+  /** GET …/billing/balance?clientCode=:clientCode */
+  getClientBillingBalance(
+    clientCode: string,
+    accessToken: string
+  ): Promise<ClientBillingBalanceResponse> {
+    const params = new HttpParams().set('clientCode', clientCode);
+    const headers = new HttpHeaders({
+      Authorization: `Bearer ${accessToken}`,
+      Accept: 'application/json',
+      'X-Request-ID': this.createClientBalanceRequestId()
+    });
+    return firstValueFrom(
+      this.http.get<ClientBillingBalanceResponse>(
+        `${this.apiBase}/billing/balance`,
+        { headers, params }
       )
     );
   }

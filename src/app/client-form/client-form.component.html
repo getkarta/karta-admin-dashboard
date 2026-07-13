@@ -19,7 +19,11 @@
         <h2 class="card__title">Basic information</h2>
         <div class="client-badges" *ngIf="isEditMode && clientCode">
           <span class="client-badge">{{ clientCode }}</span>
-          <span class="client-badge client-badge--credits">{{ clientCreditsDisplayLabel }}</span>
+          <span
+            class="client-badge client-badge--credits"
+            [attr.title]="clientCreditsLoadMessage || 'Available wallet credits'">
+            {{ clientCreditsDisplayLabel }}
+          </span>
         </div>
       </div>
       <form [formGroup]="clientForm" (ngSubmit)="onClientFormSubmit($event)" class="client-form">

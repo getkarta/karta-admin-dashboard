@@ -98,6 +98,8 @@ export class ClientFormComponent implements OnInit {
     voiceStackId: string | null;
   } | null = null;
   clientCredits: number | null = null;
+  isLoadingClientCredits = false;
+  clientCreditsLoadMessage = '';
 
   // Pricing: PUT /admin/billing/billing — body: clientCode, tier, allowNegativeBalance, customPricing, baseCreditUsage
   pricingErrorMessage = '';
@@ -226,6 +228,9 @@ export class ClientFormComponent implements OnInit {
   }
 
   get clientCreditsDisplayLabel(): string {
+    if (this.isLoadingClientCredits && this.clientCredits === null) {
+      return 'Credits: Loading...';
+    }
     if (this.clientCredits === null) {
       return 'Credits: -';
     }
@@ -541,6 +546,7 @@ export class ClientFormComponent implements OnInit {
     }
     // List rows can be partial or stale; always reload the full client before showing/editing.
     await this.loadClientByCode();
+    await this.loadClientAvailableCreditsForCurrentClient();
     await this.loadVoiceStackOptions(this.clientCode);
     await this.loadVoiceConfigForCurrentClient();
   }
@@ -1006,8 +1012,43 @@ export class ClientFormComponent implements OnInit {
 
   private formatCreditAmount(value: number): string {
     return new Intl.NumberFormat('en-US', {
-      maximumFractionDigits: 2
+      maximumFractionDigits: 3
     }).format(value);
+  }
+
+  private async loadClientAvailableCreditsForCurrentClient(): Promise<void> {
+    if (!this.isEditMode || !this.clientCode?.trim()) {
+      return;
+    }
+
+    const accessToken = localStorage.getItem('accessToken');
+    if (!accessToken) {
+      this.clientCreditsLoadMessage = 'Session expired. Please log in again.';
+      return;
+    }
+
+    const clientCode = this.clientCode.trim();
+    this.isLoadingClientCredits = true;
+    this.clientCreditsLoadMessage = '';
+    try {
+      const res = await this.api.getClientBillingBalance(
+        clientCode,
+        accessToken
+      );
+      const availableCredits = this.parseFiniteNumber(res?.availableCredits);
+      if (availableCredits === null) {
+        this.clientCreditsLoadMessage =
+          'Balance response did not include available credits.';
+        return;
+      }
+      this.clientCredits = availableCredits;
+    } catch (error) {
+      console.error('Failed to load client available credits', error);
+      this.clientCreditsLoadMessage =
+        `Could not load credits (${this.describeApiError(error)}).`;
+    } finally {
+      this.isLoadingClientCredits = false;
+    }
   }
 
   private extractEnabledAgents(src: Record<string, unknown>): string[] {
@@ -2163,6 +2204,7 @@ export class ClientFormComponent implements OnInit {
       }
       this.errorMessage = '';
       this.closeAddCreditsModal(true);
+      void this.loadClientAvailableCreditsForCurrentClient();
     } catch (error) {
       const msg =
         error instanceof HttpErrorResponse
